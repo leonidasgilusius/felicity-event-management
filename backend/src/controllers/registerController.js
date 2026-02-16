@@ -2,9 +2,8 @@ import { validationResult } from "express-validator"
 import jwt from "jsonwebtoken"
 import User from "../models/User.js"
 import Participant from "../models/Participant.js"
-import register from "../controllers/registerController.js"
 
-export default async function register(req, res) {
+export async function register(req, res) {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -42,7 +41,7 @@ export default async function register(req, res) {
         })
 
         const token = jwt.sign(
-            { id: participant._id, role: 'participant' },
+            { _id: participant._id, role: 'participant' },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );

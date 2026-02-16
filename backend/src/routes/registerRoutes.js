@@ -1,5 +1,6 @@
 import express from "express"
 import { body } from "express-validator"
+import { register } from "../controllers/registerController.js"
 
 const router = express.Router()
 
@@ -13,7 +14,9 @@ router.post('/',
             .isLength({ min: 8 })
             .withMessage('Password must be at least 8 characters')
     ],
-    )
+    register
+)
+
 
 export default router
 

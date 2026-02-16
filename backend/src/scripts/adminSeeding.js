@@ -1,16 +1,12 @@
-import User from "../models/User.js"
+import Admin from "../models/Admin.js"
 
 export default async function seedAdmin() {
-    const email = process.env.ADMIN_EMAIL
-    
-    const adminExists = await User.findOne({ email, name: "Admin" })
+    const adminExists = await Admin.findOne()
     if (adminExists) return 
 
     const password = process.env.ADMIN_PASSWD
 
-    User.create({
-        name: "Admin",
-        email,
+    Admin.create({
         password
     })
 

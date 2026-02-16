@@ -11,7 +11,7 @@ const EventSchema = new mongoose.Schema({
   description: { type: String, required: true },
   organizer: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
+    ref: 'Organizer', 
     required: true 
   },
   status: {
@@ -19,42 +19,23 @@ const EventSchema = new mongoose.Schema({
     enum: ['draft', 'published', 'closed', 'completed'],
     default: 'draft'
   },
-  eligibility: { type: String, default: 'All' },
-  registrationDeadline: { type: Date },
-  registrationLimit: { type: Number }, 
+  eligibility: { type: String, default: 'All', required: true  },
+  registrationDeadline: { type: Date, required: true  },
+  registrationLimit: { type: Number,  required: true  }, 
+  registrationFee: { type: Number, required: true },
+  startDate: { type: Date, required: true },
+  endDate: { type: Date, required: true },
+  eventTags: [{ type: String, required: true }],
+
   currentRegistrations: { type: Number, default: 0 },
   image: { type: String }
 }, baseOptions);
 
-const Event = mongoose.model('Event', EventSchema);
+export default mongoose.model('Event', EventSchema);
 
 // --- 2. Discriminators ---
 
-const NormalEvent = Event.discriminator('normal', new mongoose.Schema({
-  startDate: { type: Date, required: true },
-  endDate: { type: Date, required: true },
-  location: { type: String },
-  registrationFee: { type: Number, default: 0 },
-  
-  formSchema: [{
-    label: String,
-    fieldType: { type: String, enum: ['text', 'number', 'file', 'dropdown'] },
-    options: [String],
-    required: { type: Boolean, default: false }
-  }]
-}));
 
-const MerchandiseEvent = Event.discriminator('merchandise', new mongoose.Schema({
-  price: { type: Number, required: true },
-  stock: { type: Number, required: true },
-  
-  variants: [{
-    name: String,
-    options: [String]
-  }],
-  
-  maxPerUser: { type: Number, default: 1 }
-}));
 
 // C. Hackathon (Future Extension - Tier A Feature) [cite: 169-173]
 // You can uncomment this later when implementing Tier A
@@ -67,5 +48,3 @@ const HackathonEvent = Event.discriminator('hackathon', new mongoose.Schema({
   problemStatement: String
 }));
 */
-
-module.exports = { Event, NormalEvent, MerchandiseEvent };
