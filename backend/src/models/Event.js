@@ -16,7 +16,7 @@ const EventSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'published', 'closed', 'completed'],
+    enum: ['draft', 'published', 'ongoing', 'closed', 'completed'],
     default: 'draft'
   },
   eligibility: { type: String, default: 'All', required: true  },

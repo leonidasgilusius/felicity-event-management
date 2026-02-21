@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Event from "./Event.js";
 
 

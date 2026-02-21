@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const baseOptions = {
   discriminatorKey: 'type',
@@ -52,4 +52,5 @@ const MerchandiseOrder = Registration.discriminator('order', new mongoose.Schema
   }
 }));
 
-module.exports = { Registration, TicketRegistration, MerchandiseOrder };
+export { Registration, TicketRegistration, MerchandiseOrder };
+export default Registration;

@@ -41,17 +41,23 @@ export async function register(req, res) {
         })
 
         const token = jwt.sign(
-            { _id: participant._id, role: 'participant' },
+            { _id: participant._id, role: 'Participant' },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
+
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 24 * 60 * 60 * 1000  // 1 day in ms
+        })
 
         res.status(201).json({
             _id: participant._id,
             firstName: participant.firstName,
             email: participant.email,
-            role: 'participant',
-            token
+            role: 'Participant'
         });
 
         

@@ -5,8 +5,10 @@ export default async function seedAdmin() {
     if (adminExists) return 
 
     const password = process.env.ADMIN_PASSWD
+    const email = process.env.ADMIN_EMAIL
 
     Admin.create({
+        email,
         password
     })
 
