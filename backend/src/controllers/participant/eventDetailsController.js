@@ -1,10 +1,10 @@
-import Event from '../models/Event.js';
-import NormalEvent from '../models/NormalEvent.js';
-import MerchandiseEvent from '../models/MerchandiseEvent.js';
-import { Registration, TicketRegistration, MerchandiseOrder } from '../models/Registration.js';
-import Participant from '../models/Participant.js';
+import Event from '../../models/event/Event.js';
+import NormalEvent from '../../models/event/NormalEvent.js';
+import MerchandiseEvent from '../../models/event/MerchandiseEvent.js';
+import { Registration, TicketRegistration, MerchandiseOrder } from '../../models/Registration.js';
+import Participant from '../../models/user/Participant.js';
 import QRCode from 'qrcode';
-import { sendTicketEmail, sendMerchandiseEmail } from '../services/emailService.js';
+import { sendTicketEmail, sendMerchandiseEmail } from '../../scripts/emailService.js';
 
 // ── GET /participantEvents/:id ────────────────────────────────────────────────
 export const getEventDetail = async (req, res) => {
@@ -19,6 +19,7 @@ export const getEventDetail = async (req, res) => {
     const existing = await Registration.findOne({
       event: event._id,
       user: req.user._id,
+      status: { $ne: 'cancelled' }
     }).lean();
 
     let existingTicket = null;
@@ -59,8 +60,8 @@ export const registerForEvent = async (req, res) => {
       return res.status(400).json({ message: 'Registration limit reached.' });
     }
 
-    // Duplicate check
-    const duplicate = await Registration.findOne({ event: event._id, user: req.user._id });
+    // Duplicate check (ignore cancelled registrations)
+    const duplicate = await Registration.findOne({ event: event._id, user: req.user._id, status: { $ne: 'cancelled' } });
     if (duplicate) return res.status(400).json({ message: 'You are already registered for this event.' });
 
     const ticketId = crypto.randomUUID();
@@ -162,6 +163,35 @@ export const orderMerchandise = async (req, res) => {
     });
   } catch (err) {
     console.error('[orderMerchandise]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── DELETE /participantEvents/:id/unregister ──────────────────────────────────
+export const unregisterFromEvent = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id).lean();
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+
+    // Only allow unregister for published events (before they start)
+    if (['ongoing', 'completed', 'closed'].includes(event.status)) {
+      return res.status(400).json({ message: 'You cannot unregister from an event that is ongoing, completed, or closed.' });
+    }
+
+    const registration = await Registration.findOne({ event: event._id, user: req.user._id, status: { $ne: 'cancelled' } });
+    if (!registration) {
+      return res.status(404).json({ message: 'You are not registered for this event.' });
+    }
+
+    registration.status = 'cancelled';
+    await registration.save();
+
+    // Decrement registration count
+    await Event.findByIdAndUpdate(event._id, { $inc: { currentRegistrations: -1 } });
+
+    return res.json({ message: 'Successfully unregistered from the event.' });
+  } catch (err) {
+    console.error('[unregisterFromEvent]', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };

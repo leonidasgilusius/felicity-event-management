@@ -76,3 +76,12 @@
 .ed-qr-label { font-size: 13px; color: #555; margin: 4px 0 0; }
 .ed-qr-img { width: 180px; height: 180px; border: 1px solid #eee; border-radius: 8px; padding: 6px; }
 .ed-qr-note { font-size: 12px; color: #aaa; margin: 0; }
+
+.ed-unregister-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0e8e8; }
+.ed-unregister-btn {
+  padding: 9px 22px; background: white; color: #e74c3c;
+  border: 1.5px solid #e74c3c; border-radius: 8px; font-size: 14px;
+  font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s;
+}
+.ed-unregister-btn:hover { background: #e74c3c; color: white; }
+.ed-unregister-btn:disabled { opacity: 0.6; cursor: not-allowed; }

@@ -1,6 +1,6 @@
-import User from '../models/User.js';
-import Participant from '../models/Participant.js';
-import Event from '../models/Event.js';
+import User from '../../models/user/User.js';
+import Participant from '../../models/user/Participant.js';
+import Event from '../../models/event/Event.js';
 
 // ── GET /participantOrganizers ────────────────────────────────────────────────
 export const listOrganizers = async (req, res) => {

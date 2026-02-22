@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken"
-import Admin from "../models/Admin.js"
+import Admin from "../../models/Admin.js"
 import { validationResult } from "express-validator"
 
 export default async function adminLogin(req, res) {
@@ -31,7 +31,7 @@ export default async function adminLogin(req, res) {
         res.cookie('token', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: process.env.NODE_ENV === 'production'? 'None': 'strict',
             maxAge: 24 * 60 * 60 * 1000  // 1 day in ms
         })
 

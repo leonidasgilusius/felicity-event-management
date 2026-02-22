@@ -1,5 +1,5 @@
 import express from 'express';
-import { listOrganizers, getOrganizerDetail, toggleFollowOrganizer } from '../controllers/participantOrganizerController.js';
+import { listOrganizers, getOrganizerDetail, toggleFollowOrganizer } from '../../controllers/participant/organizerController.js';
 
 const router = express.Router();
 

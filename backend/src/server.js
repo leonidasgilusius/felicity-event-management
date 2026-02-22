@@ -6,16 +6,20 @@ import cookieParser from "cookie-parser"
 import connectdb from "./config/db.js"
 import seedAdmin from "./scripts/adminSeeding.js"
 
-import registerRoutes from "./routes/registerRoutes.js"
-import loginRoutes from "./routes/loginRoutes.js"
-import adminLoginRoutes from "./routes/adminLoginRoute.js"
-import editParticipantProfileRoutes from "./routes/editParticipantProfileRoutes.js"
-import participantDashboardRoutes from "./routes/participantDashboardRoutes.js"
-import organizerEventsRoutes from "./routes/organizerEventsRoutes.js"
-import adminRoutes from "./routes/adminRoutes.js"
-import browseEventsRoutes from "./routes/browseEventsRoutes.js"
-import participantEventRoutes from "./routes/participantEventRoutes.js"
-import participantOrganizerRoutes from "./routes/participantOrganizerRoutes.js"
+import registerRoutes from "./routes/auth/registerRoutes.js"
+import loginRoutes from "./routes/auth/loginRoutes.js"
+
+import adminLoginRoutes from "./routes/admin/adminLoginRoute.js"
+import adminRoutes from "./routes/admin/adminRoutes.js"
+
+import organizerEventsRoutes from "./routes/organiser/organizerEventsRoutes.js"
+import organizerProfileRoutes from "./routes/organiser/organizerProfileRoutes.js"
+
+import editParticipantProfileRoutes from "./routes/participant/editParticipantProfileRoutes.js"
+import participantDashboardRoutes from "./routes/participant/dashboardRoutes.js"
+import browseEventsRoutes from "./routes/participant/browseEventsRoutes.js"
+import participantEventRoutes from "./routes/participant/eventRoutes.js"
+import participantOrganizerRoutes from "./routes/participant/organizerRoutes.js"
 
 import { protect, authorizeRoles } from "./middleware/authMiddleware.js"
 
@@ -52,6 +56,7 @@ app.post('/logout', (req, res) => {
 app.use('/editParticipantProfile', protect, authorizeRoles('Participant'), editParticipantProfileRoutes)
 app.use('/participantDashboard', protect, authorizeRoles('Participant'), participantDashboardRoutes)
 app.use('/organizerEvents', protect, authorizeRoles('Organizer'), organizerEventsRoutes)
+app.use('/organizerProfile', protect, authorizeRoles('Organizer'), organizerProfileRoutes)
 app.use('/admin', protect, authorizeRoles('Admin'), adminRoutes)
 app.use('/browseEvents', protect, authorizeRoles('Participant'), browseEventsRoutes)
 app.use('/participantEvents', protect, authorizeRoles('Participant'), participantEventRoutes)

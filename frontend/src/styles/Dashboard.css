@@ -354,6 +354,13 @@
   gap: 10px;
 }
 
+.organizer-form label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: -4px;
+}
+
 .organizer-form input,
 .organizer-form textarea,
 .organizer-form select,

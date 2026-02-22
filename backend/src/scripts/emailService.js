@@ -1,15 +1,21 @@
 import nodemailer from 'nodemailer';
 import QRCode from 'qrcode';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587', 10),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+function getTransporter() {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  return transporter
+}
+
+
 
 
 export async function sendTicketEmail({ toEmail, participantName, eventTitle, ticketId, startDate, location }) {
@@ -61,6 +67,8 @@ export async function sendTicketEmail({ toEmail, participantName, eventTitle, ti
 
   }
 
+  const transporter = getTransporter()
+
   await transporter.sendMail( mailOptions );
 }
 
@@ -97,6 +105,8 @@ export async function sendMerchandiseEmail({ toEmail, participantName, eventTitl
       cid: 'qrcode',
     }],
   }
+
+  const transporter = getTransporter()
 
   await transporter.sendMail(mailOptions);
 }

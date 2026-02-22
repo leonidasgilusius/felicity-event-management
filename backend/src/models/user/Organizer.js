@@ -10,6 +10,21 @@ const organizerSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
+  },
+  contactEmail: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  contactPhone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  discordWebhook: {
+    type: String,
+    trim: true,
+    default: ''
   }
 });
 

@@ -1,6 +1,6 @@
 import express from "express"
 import { body } from "express-validator"
-import adminLogin from "../controllers/adminLoginController.js"
+import adminLogin from "../../controllers/admin/loginController.js"
 
 const router = express.Router()
 

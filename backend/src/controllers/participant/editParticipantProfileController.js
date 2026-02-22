@@ -1,4 +1,4 @@
-import Participant from "../models/Participant.js";
+import Participant from "../../models/user/Participant.js";
 import bcrypt from "bcrypt";
 
 export async function editParticipantProfile(req, res) {

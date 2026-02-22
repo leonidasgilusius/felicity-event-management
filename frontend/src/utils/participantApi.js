@@ -24,6 +24,11 @@ export const orderMerchandise = async (id, payload) => {
   return response.data;
 };
 
+export const unregisterFromEvent = async (id) => {
+  const response = await api.delete(`/participantEvents/${id}/unregister`);
+  return response.data;
+};
+
 // ── Organisers ────────────────────────────────────────────────────────────────
 export const listOrganizers = async () => {
   const response = await api.get('/participantOrganizers');

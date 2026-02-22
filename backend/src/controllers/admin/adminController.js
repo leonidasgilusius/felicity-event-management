@@ -1,5 +1,5 @@
-import Organizer from '../models/Organizer.js';
-import User from '../models/User.js';
+import Organizer from '../../models/user/Organizer.js';
+import User from '../../models/user/User.js';
 import bcrypt from 'bcrypt';
 
 function generateRandomPassword(length = 10) {

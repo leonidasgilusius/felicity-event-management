@@ -5,7 +5,7 @@ import {
   toggleDisableOrganizer,
   archiveOrganizer,
   deleteOrganizer
-} from '../controllers/adminController.js';
+} from '../../controllers/admin/adminController.js';
 
 const router = express.Router();
 

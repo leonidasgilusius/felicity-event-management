@@ -26,7 +26,8 @@ const CreateEvent = () => {
         registrationLimit: 100,
         registrationFee: 0,
         eligibility: 'All',
-        eventTags: ''
+        eventTags: '',
+        location: '',
     });
     const [draftEvent, setDraftEvent] = useState(null);
     const [formFields, setFormFields] = useState([]);
@@ -128,143 +129,205 @@ const CreateEvent = () => {
         <div className="dashboard-content participant-dashboard-content">
             <section className="info-section participant-section">
             <h3>Create Event</h3>
-            <p>Create (Draft) → Define Required Fields → Publish</p>
+            <p style={{ marginTop: 0, marginBottom: 20, color: '#666', fontSize: 14 }}>
+                Step 1: Create Draft → Step 2: Define Form Fields → Step 3: Publish
+            </p>
 
+            {/* ── Step 1: Draft form ── */}
             <form className="organizer-form" onSubmit={handleCreateDraft}>
+                <label>Event Name</label>
                 <input name="title" placeholder="Event Name" value={draftForm.title} onChange={onDraftInputChange} required />
+
+                <label>Description</label>
                 <textarea
-                name="description"
-                placeholder="Description"
-                value={draftForm.description}
-                onChange={onDraftInputChange}
-                required
+                    name="description"
+                    placeholder="Describe the event…"
+                    value={draftForm.description}
+                    onChange={onDraftInputChange}
+                    required
                 />
-                <label htmlFor="eventType">Event Type</label>
+
+                <label>Event Type</label>
                 <select name="eventType" value={draftForm.eventType} onChange={onDraftInputChange}>
-                <option value="normal">Normal</option>
-                <option value="merchandise">Merchandise</option>
+                    <option value="normal">Normal</option>
+                    <option value="merchandise">Merchandise</option>
                 </select>
 
-                <label htmlFor="startDate">Start Date</label>
+                <label>Start Date</label>
                 <input type="datetime-local" step="900" name="startDate" value={draftForm.startDate} onChange={onDraftInputChange} required />
-                
-                <label htmlFor="endDate">End Date</label>
+
+                <label>End Date</label>
                 <input type="datetime-local" step="900" name="endDate" value={draftForm.endDate} onChange={onDraftInputChange} required />
-                
-                <label htmlFor="registrationDeadline">Registration Deadline</label>
+
+                <label>Registration Deadline</label>
                 <input
-                type="datetime-local"
-                name="registrationDeadline"
-                value={draftForm.registrationDeadline}
-                onChange={onDraftInputChange}
-                required
+                    type="datetime-local"
+                    name="registrationDeadline"
+                    value={draftForm.registrationDeadline}
+                    onChange={onDraftInputChange}
+                    required
                 />
 
-                <label htmlFor="registrationLimit">Registration Limit</label>
+                <label>Registration Limit</label>
                 <input
-                type="number"
-                name="registrationLimit"
-                placeholder="Registration Limit"
-                value={draftForm.registrationLimit}
-                onChange={onDraftInputChange}
-                required
+                    type="number"
+                    name="registrationLimit"
+                    placeholder="e.g. 100"
+                    value={draftForm.registrationLimit}
+                    onChange={onDraftInputChange}
+                    required
                 />
 
-                <label htmlFor="registrationFee">Registration Fee</label>
+                <label>Registration Fee (₹)</label>
                 <input
-                type="number"
-                name="registrationFee"
-                placeholder="Registration Fee"
-                value={draftForm.registrationFee}
-                onChange={onDraftInputChange}
-                required
+                    type="number"
+                    name="registrationFee"
+                    placeholder="0 for free"
+                    value={draftForm.registrationFee}
+                    onChange={onDraftInputChange}
+                    required
                 />
 
-                <label htmlFor="eligibility">Eligibility</label>
+                <label>Eligibility</label>
                 <input
-                name="eligibility"
-                placeholder="Eligibility (e.g., All, UG1, etc)"
-                value={draftForm.eligibility}
-                onChange={onDraftInputChange}
-                required
+                    name="eligibility"
+                    placeholder="e.g. All, UG1, etc."
+                    value={draftForm.eligibility}
+                    onChange={onDraftInputChange}
+                    required
                 />
 
-                <label htmlFor="eventTags">Event Tags</label>
+                {draftForm.eventType === 'normal' && (
+                    <>
+                        <label>Location</label>
+                        <input
+                            name="location"
+                            placeholder="Venue / Online link"
+                            value={draftForm.location}
+                            onChange={onDraftInputChange}
+                        />
+                    </>
+                )}
+
+                <label>Tags <span style={{ fontWeight: 400, color: '#888' }}>(comma-separated)</span></label>
                 <input
-                name="eventTags"
-                placeholder="Tags (comma-separated)"
-                value={draftForm.eventTags}
-                onChange={onDraftInputChange}
+                    name="eventTags"
+                    placeholder="e.g. tech, workshop, music"
+                    value={draftForm.eventTags}
+                    onChange={onDraftInputChange}
                 />
-                <button type="submit" className="card-button" disabled={!!draftEvent}>
-                {draftEvent ? 'Draft Created' : 'Create Draft'}
+
+                <button type="submit" className="card-button" disabled={!!draftEvent} style={{ marginTop: 8 }}>
+                    {draftEvent ? '✓ Draft Created' : 'Create Draft'}
                 </button>
             </form>
 
+            {/* ── Step 2: Form Builder ── */}
             {draftEvent && (
-                <div className="form-builder-section">
-                <h4>Required Fields Builder</h4>
-                <div className="field-inputs">
-                    <input
-                    placeholder="Field label"
-                    value={newField.label}
-                    onChange={(e) => setNewField({ ...newField, label: e.target.value })}
-                    />
-                    <select
-                    value={newField.fieldType}
-                    onChange={(e) => setNewField({ ...newField, fieldType: e.target.value })}
-                    >
-                    <option value="text">Text</option>
-                    <option value="number">Number</option>
-                    <option value="dropdown">Dropdown</option>
-                    </select>
-                    {newField.fieldType === 'dropdown' && (
-                    <input
-                        placeholder="Options (comma-separated)"
-                        value={newField.optionsText}
-                        onChange={(e) => setNewField({ ...newField, optionsText: e.target.value })}
-                    />
-                    )}
-                    <label>
-                    <input
-                        type="checkbox"
-                        checked={newField.required}
-                        onChange={(e) => setNewField({ ...newField, required: e.target.checked })}
-                    />
-                    Required
-                    </label>
-                    <button type="button" onClick={addField}>
-                    Add Field
-                    </button>
-                </div>
+                <div className="organizer-form-builder" style={{ marginTop: 28 }}>
+                    <h4 style={{ marginBottom: 16 }}>Step 2 — Registration Form Fields</h4>
+                    <p style={{ fontSize: 13, color: '#666', marginTop: 0, marginBottom: 16 }}>
+                        Define the fields participants will fill in when registering. Fields are locked after the first registration.
+                    </p>
 
-                <div className="fields-list">
-                    {formFields.map((field, index) => (
-                    <div key={index} className="field-item">
-                        <span>
-                        {field.label} ({field.fieldType}) {field.required ? '*' : ''}
-                        </span>
-                        <div className="field-actions">
-                        <button onClick={() => moveField(index, 'up')}>↑</button>
-                        <button onClick={() => moveField(index, 'down')}>↓</button>
-                        <button onClick={() => removeField(index)}>Delete</button>
-                        </div>
+                    {/* Add field row */}
+                    <div className="organizer-form-row">
+                        <input
+                            placeholder="Field label (e.g. Roll Number)"
+                            value={newField.label}
+                            onChange={(e) => setNewField({ ...newField, label: e.target.value })}
+                        />
+                        <select
+                            value={newField.fieldType}
+                            onChange={(e) => setNewField({ ...newField, fieldType: e.target.value })}
+                        >
+                            <option value="text">Text</option>
+                            <option value="textarea">Long Text</option>
+                            <option value="number">Number</option>
+                            <option value="dropdown">Dropdown</option>
+                            <option value="checkbox">Checkbox</option>
+                            <option value="file">File Upload</option>
+                        </select>
+                        <label className="organizer-checkbox">
+                            <input
+                                type="checkbox"
+                                checked={newField.required}
+                                onChange={(e) => setNewField({ ...newField, required: e.target.checked })}
+                            />
+                            Required
+                        </label>
                     </div>
-                    ))}
-                </div>
 
-                <div className="flow-actions">
-                    <button type="button" className="card-button" onClick={handleSaveFormFields}>
-                    Save Fields
+                    {newField.fieldType === 'dropdown' && (
+                        <div style={{ marginBottom: 12 }}>
+                            <input
+                                placeholder="Options (comma-separated, e.g. Option A, Option B)"
+                                value={newField.optionsText}
+                                onChange={(e) => setNewField({ ...newField, optionsText: e.target.value })}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '10px', border: '1px solid #cfd8e6', borderRadius: 6, fontSize: 14 }}
+                            />
+                        </div>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={addField}
+                        style={{
+                            marginBottom: 20, padding: '9px 20px', background: '#eef2ff',
+                            color: '#667eea', border: '1.5px solid #667eea', borderRadius: 8,
+                            fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                        }}
+                    >
+                        + Add Field
                     </button>
-                    <button type="button" className="card-button" onClick={handlePublishDraft}>
-                    Publish Event
-                    </button>
-                </div>
+
+                    {/* Fields list */}
+                    <div className="organizer-field-list">
+                        {formFields.length === 0 && (
+                            <p style={{ color: '#aaa', fontSize: 13 }}>No fields added yet.</p>
+                        )}
+                        {formFields.map((field, index) => (
+                            <div key={index} className="organizer-field-item">
+                                <div>
+                                    <span style={{ fontWeight: 600, color: '#2f3b52' }}>{field.label}</span>
+                                    <span style={{ marginLeft: 8, color: '#888', fontSize: 12 }}>
+                                        {field.fieldType}{field.required ? ' *' : ''}
+                                        {field.options?.length > 0 && ` [${field.options.join(', ')}]`}
+                                    </span>
+                                </div>
+                                <div className="organizer-field-actions">
+                                    <button onClick={() => moveField(index, 'up')} disabled={index === 0} title="Move up">↑</button>
+                                    <button onClick={() => moveField(index, 'down')} disabled={index === formFields.length - 1} title="Move down">↓</button>
+                                    <button onClick={() => removeField(index)} style={{ color: '#e74c3c' }} title="Delete">✕</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Step 2 & 3 actions */}
+                    <div className="organizer-flow-actions" style={{ marginTop: 20 }}>
+                        <button type="button" className="card-button" onClick={handleSaveFormFields}>
+                            Save Fields
+                        </button>
+                        <button type="button" className="card-button" onClick={handlePublishDraft}
+                            style={{ background: 'linear-gradient(135deg,#27ae60,#16a085)' }}>
+                            Publish Event
+                        </button>
+                    </div>
                 </div>
             )}
 
-            {createFlowMessage && <p className="success-message">{createFlowMessage}</p>}
+            {createFlowMessage && (
+                <p style={{
+                    marginTop: 16, padding: '10px 14px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                    background: createFlowMessage.toLowerCase().includes('fail') || createFlowMessage.toLowerCase().includes('error')
+                        ? '#feeaea' : '#e8f8ef',
+                    color: createFlowMessage.toLowerCase().includes('fail') || createFlowMessage.toLowerCase().includes('error')
+                        ? '#c0392b' : '#27ae60',
+                }}>
+                    {createFlowMessage}
+                </p>
+            )}
             </section>
         </div>
         </div>

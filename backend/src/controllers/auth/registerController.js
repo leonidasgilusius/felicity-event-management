@@ -1,7 +1,7 @@
 import { validationResult } from "express-validator"
 import jwt from "jsonwebtoken"
-import User from "../models/User.js"
-import Participant from "../models/Participant.js"
+import User from "../../models/user/User.js"
+import Participant from "../../models/user/Participant.js"
 
 export async function register(req, res) {
     try {
@@ -49,7 +49,7 @@ export async function register(req, res) {
         res.cookie('token', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: process.env.NODE_ENV === 'production'? 'None': 'strict',
             maxAge: 24 * 60 * 60 * 1000  // 1 day in ms
         })
 

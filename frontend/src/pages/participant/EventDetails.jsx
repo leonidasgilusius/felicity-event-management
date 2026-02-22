@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ParticipantSidebar from '../../components/ParticipantSidebar';
-import { getEventDetail, registerForEvent, orderMerchandise } from '../../utils/participantApi';
+import { getEventDetail, registerForEvent, orderMerchandise, unregisterFromEvent } from '../../utils/participantApi';
 import '../../styles/Dashboard.css';
 import '../../styles/EventDetails.css';
 
@@ -23,6 +23,8 @@ const EventDetails = () => {
   const [submitting, setSubmitting] = useState(false);
   const [ticket, setTicket] = useState(null); // { ticketId, qrDataUrl, message, totalPrice, registrationFee }
   const [submitError, setSubmitError] = useState('');
+  const [unregistering, setUnregistering] = useState(false);
+  const [unregisterError, setUnregisterError] = useState('');
 
   useEffect(() => {
     getEventDetail(id)
@@ -84,9 +86,25 @@ const EventDetails = () => {
     }
   };
 
+  const handleUnregister = async () => {
+    if (!window.confirm('Are you sure you want to unregister from this event?')) return;
+    setUnregistering(true);
+    setUnregisterError('');
+    try {
+      await unregisterFromEvent(id);
+      setAlreadyRegistered(false);
+      setTicket(null);
+    } catch (err) {
+      setUnregisterError(err || 'Failed to unregister.');
+    } finally {
+      setUnregistering(false);
+    }
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
   if (loading) return <div className="dashboard-container"><ParticipantSidebar /><div className="dashboard-content"><p>Loading…</p></div></div>;
   if (error) return <div className="dashboard-container"><ParticipantSidebar /><div className="dashboard-content"><p className="error-message">{error}</p></div></div>;
+  if (!event) return null;
 
   return (
     <div className="dashboard-container">
@@ -150,6 +168,18 @@ const EventDetails = () => {
               <p className="ed-qr-label">Show this QR code at the entrance:</p>
               <img src={ticket.qrDataUrl} alt="Ticket QR" className="ed-qr-img" />
               <p className="ed-qr-note">A copy has also been sent to your email.</p>
+              {event.type === 'normal' && !['ongoing', 'completed', 'closed'].includes(event.status) && (
+                <div className="ed-unregister-section">
+                  <button
+                    className="ed-unregister-btn"
+                    onClick={handleUnregister}
+                    disabled={unregistering}
+                  >
+                    {unregistering ? 'Unregistering…' : 'Unregister from Event'}
+                  </button>
+                  {unregisterError && <p className="error-message">{unregisterError}</p>}
+                </div>
+              )}
             </div>
           ) : blockReason ? (
             <p className="ed-blocked">{blockMessages[blockReason]}</p>

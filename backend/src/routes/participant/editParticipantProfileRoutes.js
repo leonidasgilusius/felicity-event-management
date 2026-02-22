@@ -1,5 +1,5 @@
 import express from "express";
-import { editParticipantProfile, getParticipantProfile, changePassword } from "../controllers/editParticipantProfileController.js";
+import { editParticipantProfile, getParticipantProfile, changePassword } from "../../controllers/participant/editParticipantProfileController.js";
 
 const router = express.Router()
 

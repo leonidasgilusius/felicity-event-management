@@ -1,7 +1,7 @@
-import Event from '../models/Event.js';
-import Registration from '../models/Registration.js';
-import Participant from '../models/Participant.js';
-import User from '../models/User.js';
+import Event from '../../models/event/Event.js';
+import Registration from '../../models/Registration.js';
+import Participant from '../../models/user/Participant.js';
+import User from '../../models/user/User.js';
 
 /**
  * GET /browseEvents

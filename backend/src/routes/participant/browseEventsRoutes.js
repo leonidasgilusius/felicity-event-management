@@ -1,5 +1,5 @@
 import express from 'express';
-import { browseEvents } from '../controllers/browseEventsController.js';
+import { browseEvents } from '../../controllers/participant/browseEventsController.js';
 
 const router = express.Router();
 

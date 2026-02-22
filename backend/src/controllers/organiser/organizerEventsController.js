@@ -1,8 +1,9 @@
-import Event from '../models/Event.js';
-import NormalEvent from '../models/NormalEvent.js';
-import MerchandiseEvent from '../models/MerchandiseEvent.js';
-import Organizer from '../models/Organizer.js';
-import { Registration } from '../models/Registration.js';
+import Event from '../../models/event/Event.js';
+import NormalEvent from '../../models/event/NormalEvent.js';
+import MerchandiseEvent from '../../models/event/MerchandiseEvent.js';
+import Organizer from '../../models/user/Organizer.js';
+import { Registration } from '../../models/Registration.js';
+import User from '../../models/user/User.js';
 
 function getDisplayStatus(event) {
   const now = new Date();
@@ -288,6 +289,23 @@ export async function publishEvent(req, res) {
     event.status = 'published';
     await event.save();
 
+    // Discord webhook – post new event announcement if organizer has one configured
+    try {
+      const organizer = await Organizer.findById(organizerId).select('discordWebhook name').lean();
+      if (organizer?.discordWebhook) {
+        const payload = {
+          content: `🎉 **New Event Published!**\n**${event.title}**\nStarts: ${new Date(event.startDate).toLocaleString()}\nEligibility: ${event.eligibility || 'All'}`
+        };
+        await fetch(organizer.discordWebhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+    } catch (webhookErr) {
+      console.warn('[Discord webhook]', webhookErr.message);
+    }
+
     return res.status(200).json({
       message: 'Event published successfully.',
       event
@@ -295,5 +313,153 @@ export async function publishEvent(req, res) {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error while publishing event.' });
+  }
+}
+
+// ── GET /organizerEvents/:eventId ─────────────────────────────────────────────
+export async function getOrganizerEventDetail(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).lean();
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+
+    const registrations = await Registration.find({ event: eventId })
+      .populate('user', 'name email')
+      .lean();
+
+    const analytics = getEventAnalytics(event, registrations);
+
+    const participants = registrations.map((reg) => ({
+      _id: reg._id,
+      name: reg.user?.name || 'Unknown',
+      email: reg.user?.email || '',
+      registeredAt: reg.createdAt,
+      paymentStatus: reg.paymentStatus || null,
+      status: reg.status,
+      ticketId: reg.ticketId,
+      // merchandise fields
+      quantity: reg.quantity || null,
+      totalPrice: reg.totalPrice ?? null,
+    }));
+
+    return res.status(200).json({
+      event,
+      analytics,
+      participants,
+      displayStatus: getDisplayStatus(event)
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while fetching event detail.' });
+  }
+}
+
+// ── PATCH /organizerEvents/:eventId/edit ──────────────────────────────────────
+export async function updateOrganizerEvent(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId });
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+
+    const status = event.status;
+
+    if (['ongoing', 'completed', 'closed'].includes(status)) {
+      return res.status(400).json({ message: 'Ongoing/Completed/Closed events cannot be edited.' });
+    }
+
+    const {
+      title, description, eligibility, registrationDeadline, registrationLimit,
+      registrationFee, startDate, endDate, eventTags, location,
+      stock, variants, maxPerUser
+    } = req.body;
+
+    if (status === 'draft') {
+      // Free edits
+      if (title !== undefined) event.title = title;
+      if (description !== undefined) event.description = description;
+      if (eligibility !== undefined) event.eligibility = eligibility;
+      if (registrationDeadline !== undefined) event.registrationDeadline = registrationDeadline;
+      if (registrationLimit !== undefined) event.registrationLimit = Number(registrationLimit);
+      if (registrationFee !== undefined) event.registrationFee = Number(registrationFee);
+      if (startDate !== undefined) event.startDate = startDate;
+      if (endDate !== undefined) event.endDate = endDate;
+      if (eventTags !== undefined) event.eventTags = Array.isArray(eventTags) ? eventTags : [];
+      if (location !== undefined && event.type === 'normal') event.location = location;
+      if (stock !== undefined && event.type === 'merchandise') event.stock = Number(stock);
+      if (variants !== undefined && event.type === 'merchandise') event.variants = variants;
+      if (maxPerUser !== undefined && event.type === 'merchandise') event.maxPerUser = Number(maxPerUser);
+    } else if (status === 'published') {
+      // Limited edits: description, extend deadline, increase limit, close registrations
+      if (description !== undefined) event.description = description;
+      if (registrationDeadline !== undefined) {
+        if (new Date(registrationDeadline) < new Date(event.registrationDeadline)) {
+          return res.status(400).json({ message: 'Cannot shorten the registration deadline for a published event.' });
+        }
+        event.registrationDeadline = registrationDeadline;
+      }
+      if (registrationLimit !== undefined) {
+        if (Number(registrationLimit) < event.registrationLimit) {
+          return res.status(400).json({ message: 'Cannot reduce the registration limit for a published event.' });
+        }
+        event.registrationLimit = Number(registrationLimit);
+      }
+    }
+
+    await event.save();
+    return res.status(200).json({ message: 'Event updated successfully.', event });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while updating event.' });
+  }
+}
+
+// ── PATCH /organizerEvents/:eventId/status ────────────────────────────────────
+export async function changeEventStatus(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+    const { status: newStatus } = req.body;
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId });
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+
+    const allowedTransitions = {
+      published: ['closed'],
+      ongoing: ['completed', 'closed'],
+      completed: [],
+      closed: [],
+      draft: ['published']
+    };
+
+    const allowed = allowedTransitions[event.status] || [];
+    if (!allowed.includes(newStatus)) {
+      return res.status(400).json({
+        message: `Cannot change status from '${event.status}' to '${newStatus}'.`
+      });
+    }
+
+    // Extra validation for publishing
+    if (newStatus === 'published' && event.type === 'normal' &&
+        (!Array.isArray(event.formSchema) || event.formSchema.length === 0)) {
+      return res.status(400).json({ message: 'Define form fields before publishing a normal event.' });
+    }
+
+    event.status = newStatus;
+    await event.save();
+
+    return res.status(200).json({ message: `Event status changed to '${newStatus}'.`, event });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while changing event status.' });
   }
 }

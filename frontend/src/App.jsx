@@ -14,6 +14,7 @@ import OrganizerDashboard from './pages/organizer/Dashboard';
 import CreateEvent from './pages/organizer/CreateEvent';
 import OngoingEvents from './pages/organizer/OngoingEvents';
 import OrganizerProfile from './pages/organizer/Profile';
+import OrganizerEventDetail from './pages/organizer/EventDetail';
 
 // Participant Pages
 import ParticipantDashboard from './pages/participant/Dashboard';
@@ -135,6 +136,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['Organizer']}>
                 <OngoingEvents />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organizer/events/:eventId"
+            element={
+              <ProtectedRoute allowedRoles={['Organizer']}>
+                <OrganizerEventDetail />
               </ProtectedRoute>
             }
           />

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://felicity-event-management-paru.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000' // 'https://felicity-event-management-paru.onrender.com';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -61,6 +61,31 @@ export const updateOrganizerEventFormSchema = async (eventId, formFields) => {
 
 export const publishOrganizerEvent = async (eventId) => {
   const response = await api.patch(`/organizerEvents/${eventId}/publish`);
+  return response.data;
+};
+
+export const getOrganizerEventDetail = async (eventId) => {
+  const response = await api.get(`/organizerEvents/${eventId}`);
+  return response.data;
+};
+
+export const updateOrganizerEvent = async (eventId, payload) => {
+  const response = await api.patch(`/organizerEvents/${eventId}/edit`, payload);
+  return response.data;
+};
+
+export const changeOrganizerEventStatus = async (eventId, status) => {
+  const response = await api.patch(`/organizerEvents/${eventId}/status`, { status });
+  return response.data;
+};
+
+export const getOrganizerProfile = async () => {
+  const response = await api.get('/organizerProfile');
+  return response.data;
+};
+
+export const updateOrganizerProfile = async (payload) => {
+  const response = await api.put('/organizerProfile', payload);
   return response.data;
 };
 

@@ -1,4 +1,4 @@
-import { Registration } from '../models/Registration.js';
+import { Registration } from '../../models/Registration.js';
 
 const CANCELLED_REJECTED_STATUSES = ['cancelled', 'rejected'];
 
