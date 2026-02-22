@@ -1,6 +1,6 @@
 import Organizer from '../../models/user/Organizer.js';
 import User from '../../models/user/User.js';
-import bcrypt from 'bcrypt';
+import PasswordResetRequest from '../../models/PasswordResetRequest.js';
 
 function generateRandomPassword(length = 10) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
@@ -107,5 +107,85 @@ export async function deleteOrganizer(req, res) {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error while deleting organizer.' });
+  }
+}
+
+export async function listPasswordResetRequests(req, res) {
+  try {
+    const requests = await PasswordResetRequest.find()
+      .populate('organizer', 'name email')
+      .populate('reviewedBy', 'name email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ requests });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while listing password reset requests.' });
+  }
+}
+
+export async function approvePasswordResetRequest(req, res) {
+  try {
+    const { id } = req.params;
+    const { comment = '' } = req.body;
+
+    const request = await PasswordResetRequest.findById(id).populate('organizer');
+    if (!request) return res.status(404).json({ message: 'Password reset request not found.' });
+    if (request.status !== 'Pending') {
+      return res.status(400).json({ message: `Request is already ${request.status}.` });
+    }
+
+    const organizer = await User.findOne({ _id: request.organizer._id, role: 'Organizer' });
+    if (!organizer) {
+      return res.status(404).json({ message: 'Organizer account not found.' });
+    }
+
+    const newPassword = generateRandomPassword(12);
+    organizer.password = newPassword;
+    await organizer.save();
+
+    request.status = 'Approved';
+    request.adminComment = String(comment || '').trim();
+    request.reviewedBy = req.user._id;
+    request.reviewedAt = new Date();
+    await request.save();
+
+    return res.status(200).json({
+      message: 'Password reset approved.',
+      request,
+      generatedPassword: newPassword,
+      organizer: {
+        name: organizer.name,
+        email: organizer.email,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while approving password reset request.' });
+  }
+}
+
+export async function rejectPasswordResetRequest(req, res) {
+  try {
+    const { id } = req.params;
+    const { comment = '' } = req.body;
+
+    const request = await PasswordResetRequest.findById(id);
+    if (!request) return res.status(404).json({ message: 'Password reset request not found.' });
+    if (request.status !== 'Pending') {
+      return res.status(400).json({ message: `Request is already ${request.status}.` });
+    }
+
+    request.status = 'Rejected';
+    request.adminComment = String(comment || '').trim();
+    request.reviewedBy = req.user._id;
+    request.reviewedAt = new Date();
+    await request.save();
+
+    return res.status(200).json({ message: 'Password reset request rejected.', request });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while rejecting password reset request.' });
   }
 }

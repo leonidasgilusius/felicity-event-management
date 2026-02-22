@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { loginUser } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
+import ReCAPTCHA from 'react-google-recaptcha';
 import '../../styles/Auth.css';
 
 const Login = () => {
@@ -13,6 +14,9 @@ const Login = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+
+  const captchaSiteKey = import.meta.env.VITE_CAPTCHA_SITE_KEY || '';
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -28,7 +32,12 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const response = await loginUser(formData);
+      if (!captchaToken) {
+        throw new Error('Please complete CAPTCHA verification.');
+      }
+
+      const payload = { ...formData, captchaToken }
+      const response = await loginUser(payload);
       login(
         {
           _id: response._id,
@@ -92,6 +101,15 @@ const Login = () => {
           </div>
 
           {error && <div className="error-message">{error}</div>}
+
+          {captchaSiteKey && (
+            <div style={{ marginBottom: 12 }}>
+              <ReCAPTCHA
+                sitekey={captchaSiteKey}
+                onChange={(token) => setCaptchaToken(token || '')}
+              />
+            </div>
+          )}
 
           <button type="submit" className="auth-button" disabled={loading}>
             {loading ? 'Logging in...' : 'Login'}

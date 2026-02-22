@@ -20,6 +20,7 @@ import participantDashboardRoutes from "./routes/participant/dashboardRoutes.js"
 import browseEventsRoutes from "./routes/participant/browseEventsRoutes.js"
 import participantEventRoutes from "./routes/participant/eventRoutes.js"
 import participantOrganizerRoutes from "./routes/participant/organizerRoutes.js"
+import forumRoutes from "./routes/forum/forumRoutes.js"
 
 import { protect, authorizeRoles } from "./middleware/authMiddleware.js"
 
@@ -61,6 +62,7 @@ app.use('/admin', protect, authorizeRoles('Admin'), adminRoutes)
 app.use('/browseEvents', protect, authorizeRoles('Participant'), browseEventsRoutes)
 app.use('/participantEvents', protect, authorizeRoles('Participant'), participantEventRoutes)
 app.use('/participantOrganizers', protect, authorizeRoles('Participant'), participantOrganizerRoutes)
+app.use('/forums', protect, authorizeRoles('Participant', 'Organizer'), forumRoutes)
 
 connectdb().then( () => {
     seedAdmin()

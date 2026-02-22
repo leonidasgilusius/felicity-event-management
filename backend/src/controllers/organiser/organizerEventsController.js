@@ -2,8 +2,13 @@ import Event from '../../models/event/Event.js';
 import NormalEvent from '../../models/event/NormalEvent.js';
 import MerchandiseEvent from '../../models/event/MerchandiseEvent.js';
 import Organizer from '../../models/user/Organizer.js';
-import { Registration } from '../../models/Registration.js';
+import { Registration, MerchandiseOrder } from '../../models/Registration.js';
 import User from '../../models/user/User.js';
+import Participant from '../../models/user/Participant.js';
+import AttendanceAudit from '../../models/AttendanceAudit.js';
+import EventFeedback from '../../models/EventFeedback.js';
+import QRCode from 'qrcode';
+import { sendMerchandiseEmail } from '../../scripts/emailService.js';
 
 function getDisplayStatus(event) {
   const now = new Date();
@@ -99,6 +104,25 @@ function validateFormFields(fields) {
   return null;
 }
 
+function isEventHappeningNow(event) {
+  const now = new Date();
+  if (!event?.startDate || !event?.endDate) return false;
+  return now >= new Date(event.startDate) && now <= new Date(event.endDate);
+}
+
+function formatAttendanceParticipants(registrations) {
+  return registrations.map((registration) => ({
+    registrationId: registration._id,
+    participantId: registration.user?._id || null,
+    name: registration.user?.name || 'Unknown',
+    email: registration.user?.email || '',
+    ticketId: registration.ticketId,
+    status: registration.status,
+    checkInTime: registration.checkInTime || null,
+    scanned: registration.status === 'attended',
+  }));
+}
+
 export async function getOrganizerDashboard(req, res) {
   try {
     const organizerId = req.user._id;
@@ -180,7 +204,8 @@ export async function createDraftEvent(req, res) {
       location,
       stock,
       variants,
-      maxPerUser
+      maxPerUser,
+      paymentDetails
     } = req.body;
 
     if (!title || !description || !registrationDeadline || !registrationLimit || registrationFee === undefined || !startDate || !endDate) {
@@ -212,7 +237,8 @@ export async function createDraftEvent(req, res) {
         ...basePayload,
         stock,
         variants: Array.isArray(variants) ? variants : [],
-        maxPerUser: maxPerUser || 1
+        maxPerUser: maxPerUser || 1,
+        paymentDetails: paymentDetails || ''
       });
     } else {
       event = await NormalEvent.create({
@@ -241,10 +267,6 @@ export async function updateEventFormSchema(req, res) {
     const event = await Event.findOne({ _id: eventId, organizer: organizerId });
     if (!event) {
       return res.status(404).json({ message: 'Event not found for this organizer.' });
-    }
-
-    if (event.type !== 'normal') {
-      return res.status(400).json({ message: 'Form builder is supported for normal events only.' });
     }
 
     const hasRegistrations = await Registration.exists({ event: eventId });
@@ -280,10 +302,6 @@ export async function publishEvent(req, res) {
     const event = await Event.findOne({ _id: eventId, organizer: organizerId });
     if (!event) {
       return res.status(404).json({ message: 'Event not found for this organizer.' });
-    }
-
-    if (event.type === 'normal' && (!Array.isArray(event.formSchema) || event.formSchema.length === 0)) {
-      return res.status(400).json({ message: 'Define form fields before publishing a normal event.' });
     }
 
     event.status = 'published';
@@ -358,6 +376,268 @@ export async function getOrganizerEventDetail(req, res) {
   }
 }
 
+// ── GET /organizerEvents/:eventId/feedback ──────────────────────────────────
+export async function getEventFeedbackOverview(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+    const ratingFilter = req.query.rating ? Number(req.query.rating) : null;
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).lean();
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+
+    const query = { event: eventId };
+    if (ratingFilter && Number.isInteger(ratingFilter) && ratingFilter >= 1 && ratingFilter <= 5) {
+      query.rating = ratingFilter;
+    }
+
+    const feedbackList = await EventFeedback.find(query)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const allFeedback = await EventFeedback.find({ event: eventId }).select('rating').lean();
+    const total = allFeedback.length;
+    const averageRating = total > 0
+      ? Number((allFeedback.reduce((sum, item) => sum + item.rating, 0) / total).toFixed(2))
+      : 0;
+
+    const ratingBreakdown = [1, 2, 3, 4, 5].map((rating) => ({
+      rating,
+      count: allFeedback.filter((item) => item.rating === rating).length,
+    }));
+
+    return res.status(200).json({
+      stats: {
+        total,
+        averageRating,
+        ratingBreakdown,
+      },
+      feedback: feedbackList.map((item) => ({
+        _id: item._id,
+        rating: item.rating,
+        comment: item.comment,
+        createdAt: item.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while fetching event feedback.' });
+  }
+}
+
+// ── GET /organizerEvents/:eventId/attendance ─────────────────────────────────
+export async function getAttendanceOverview(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).lean();
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+    if (event.type !== 'normal') {
+      return res.status(400).json({ message: 'Attendance scanner is available for normal events only.' });
+    }
+    if (!isEventHappeningNow(event)) {
+      return res.status(400).json({ message: 'Attendance can only be tracked while the event is ongoing.' });
+    }
+
+    const registrations = await Registration.find({
+      event: eventId,
+      type: 'ticket',
+      status: { $ne: 'cancelled' },
+    })
+      .populate('user', 'name email')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const participants = formatAttendanceParticipants(registrations);
+    const scannedCount = participants.filter((p) => p.scanned).length;
+
+    return res.status(200).json({
+      event: {
+        _id: event._id,
+        title: event.title,
+        startDate: event.startDate,
+        endDate: event.endDate,
+      },
+      stats: {
+        total: participants.length,
+        scanned: scannedCount,
+        notScanned: participants.length - scannedCount,
+      },
+      participants,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while loading attendance overview.' });
+  }
+}
+
+// ── POST /organizerEvents/:eventId/attendance/scan ───────────────────────────
+export async function scanAttendanceTicket(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+    const { ticketId } = req.body;
+
+    if (!ticketId || typeof ticketId !== 'string') {
+      return res.status(400).json({ message: 'ticketId is required.' });
+    }
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).lean();
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+    if (!isEventHappeningNow(event)) {
+      return res.status(400).json({ message: 'Attendance scanning is allowed only while the event is ongoing.' });
+    }
+
+    const registration = await Registration.findOne({
+      event: eventId,
+      ticketId: ticketId.trim(),
+      type: 'ticket',
+      status: { $ne: 'cancelled' },
+    }).populate('user', 'name email');
+
+    if (!registration) {
+      return res.status(404).json({ message: 'Invalid ticket for this event.' });
+    }
+
+    if (registration.status === 'attended') {
+      await AttendanceAudit.create({
+        event: eventId,
+        registration: registration._id,
+        participant: registration.user._id,
+        organizer: organizerId,
+        action: 'scan_duplicate',
+        note: 'Duplicate scan rejected.',
+      });
+
+      return res.status(409).json({
+        message: 'This ticket has already been scanned.',
+        participant: {
+          registrationId: registration._id,
+          name: registration.user?.name || 'Unknown',
+          email: registration.user?.email || '',
+          ticketId: registration.ticketId,
+          checkInTime: registration.checkInTime || null,
+        },
+      });
+    }
+
+    registration.status = 'attended';
+    registration.checkInTime = new Date();
+    await registration.save();
+
+    await AttendanceAudit.create({
+      event: eventId,
+      registration: registration._id,
+      participant: registration.user._id,
+      organizer: organizerId,
+      action: 'scan_mark_attended',
+      note: 'Marked attended by QR scan.',
+    });
+
+    return res.status(200).json({
+      message: 'Attendance marked successfully.',
+      participant: {
+        registrationId: registration._id,
+        name: registration.user?.name || 'Unknown',
+        email: registration.user?.email || '',
+        ticketId: registration.ticketId,
+        checkInTime: registration.checkInTime,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while scanning ticket.' });
+  }
+}
+
+// ── POST /organizerEvents/:eventId/attendance/manual ─────────────────────────
+export async function manualMarkAttendance(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+    const { registrationId, note = '' } = req.body;
+
+    if (!registrationId) {
+      return res.status(400).json({ message: 'registrationId is required for manual override.' });
+    }
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).lean();
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found for this organizer.' });
+    }
+    if (!isEventHappeningNow(event)) {
+      return res.status(400).json({ message: 'Manual attendance override is allowed only while the event is ongoing.' });
+    }
+
+    const registration = await Registration.findOne({
+      _id: registrationId,
+      event: eventId,
+      type: 'ticket',
+      status: { $ne: 'cancelled' },
+    }).populate('user', 'name email');
+
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found for this event.' });
+    }
+
+    if (registration.status === 'attended') {
+      await AttendanceAudit.create({
+        event: eventId,
+        registration: registration._id,
+        participant: registration.user._id,
+        organizer: organizerId,
+        action: 'manual_already_attended',
+        note: note || 'Manual override attempted but participant already marked attended.',
+      });
+
+      return res.status(200).json({
+        message: 'Participant is already marked present.',
+        participant: {
+          registrationId: registration._id,
+          name: registration.user?.name || 'Unknown',
+          email: registration.user?.email || '',
+          ticketId: registration.ticketId,
+          checkInTime: registration.checkInTime || null,
+        },
+      });
+    }
+
+    registration.status = 'attended';
+    registration.checkInTime = new Date();
+    await registration.save();
+
+    await AttendanceAudit.create({
+      event: eventId,
+      registration: registration._id,
+      participant: registration.user._id,
+      organizer: organizerId,
+      action: 'manual_mark_attended',
+      note: note || 'Marked present via manual override.',
+    });
+
+    return res.status(200).json({
+      message: 'Participant marked present manually.',
+      participant: {
+        registrationId: registration._id,
+        name: registration.user?.name || 'Unknown',
+        email: registration.user?.email || '',
+        ticketId: registration.ticketId,
+        checkInTime: registration.checkInTime,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while applying manual override.' });
+  }
+}
+
 // ── PATCH /organizerEvents/:eventId/edit ──────────────────────────────────────
 export async function updateOrganizerEvent(req, res) {
   try {
@@ -378,7 +658,7 @@ export async function updateOrganizerEvent(req, res) {
     const {
       title, description, eligibility, registrationDeadline, registrationLimit,
       registrationFee, startDate, endDate, eventTags, location,
-      stock, variants, maxPerUser
+      stock, variants, maxPerUser, paymentDetails
     } = req.body;
 
     if (status === 'draft') {
@@ -396,6 +676,7 @@ export async function updateOrganizerEvent(req, res) {
       if (stock !== undefined && event.type === 'merchandise') event.stock = Number(stock);
       if (variants !== undefined && event.type === 'merchandise') event.variants = variants;
       if (maxPerUser !== undefined && event.type === 'merchandise') event.maxPerUser = Number(maxPerUser);
+      if (paymentDetails !== undefined && event.type === 'merchandise') event.paymentDetails = paymentDetails;
     } else if (status === 'published') {
       // Limited edits: description, extend deadline, increase limit, close registrations
       if (description !== undefined) event.description = description;
@@ -461,5 +742,158 @@ export async function changeEventStatus(req, res) {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error while changing event status.' });
+  }
+}
+
+// ── GET /organizerEvents/:eventId/orders ──────────────────────────────────────
+export async function getEventOrders(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { eventId } = req.params;
+
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).lean();
+    if (!event) return res.status(404).json({ message: 'Event not found for this organizer.' });
+    if (event.type !== 'merchandise') return res.status(400).json({ message: 'Only merchandise events have orders.' });
+
+    const orders = await MerchandiseOrder.find({ event: eventId })
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const normalizeSelectedVariants = (value) => {
+      if (!value) return {};
+      if (typeof value.entries === 'function') return Object.fromEntries(value.entries());
+      if (Array.isArray(value)) return Object.fromEntries(value);
+      if (typeof value === 'object') return value;
+      return {};
+    };
+
+    const result = orders.map((o) => ({
+      _id: o._id,
+      name: o.user?.name || 'Unknown',
+      email: o.user?.email || '',
+      quantity: o.quantity,
+      totalPrice: o.totalPrice,
+      selectedVariants: normalizeSelectedVariants(o.selectedVariants),
+      paymentStatus: o.paymentStatus,
+      status: o.status,
+      hasProof: !!o.paymentProofUrl,   // don't send base64 in list – fetch on demand
+      ticketId: o.ticketId,
+      orderedAt: o.createdAt,
+    }));
+
+    return res.status(200).json({ orders: result, eventTitle: event.title, event });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while fetching orders.' });
+  }
+}
+
+// ── GET /organizerEvents/orders/:orderId/proof ───────────────────────────────
+export async function getOrderProof(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const order = await MerchandiseOrder.findById(req.params.orderId).populate('event').lean();
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    if (String(order.event.organizer) !== String(organizerId)) {
+      return res.status(403).json({ message: 'Not your event.' });
+    }
+    if (!order.paymentProofUrl) {
+      return res.status(404).json({ message: 'No payment proof has been uploaded yet.' });
+    }
+    return res.json({ paymentProofUrl: order.paymentProofUrl });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+}
+
+// ── PATCH /organizerEvents/orders/:orderId/approve ────────────────────────────
+export async function approveOrder(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { orderId } = req.params;
+
+    const order = await MerchandiseOrder.findById(orderId).populate('event');
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+
+    // Verify event belongs to this organizer
+    if (String(order.event.organizer) !== String(organizerId)) {
+      return res.status(403).json({ message: 'Not your event.' });
+    }
+
+    if (order.paymentStatus === 'approved') {
+      return res.status(400).json({ message: 'Order is already approved.' });
+    }
+
+    if (!order.paymentProofUrl) {
+      return res.status(400).json({ message: 'No payment proof uploaded yet.' });
+    }
+
+    const event = order.event;
+
+    // Check stock
+    if (event.stock < order.quantity) {
+      return res.status(400).json({ message: 'Not enough stock to approve this order.' });
+    }
+
+    // Approve
+    order.paymentStatus = 'approved';
+    order.status = 'confirmed';
+    await order.save();
+
+    // Decrement stock
+    await MerchandiseEvent.findByIdAndUpdate(event._id, {
+      $inc: { stock: -order.quantity, currentRegistrations: order.quantity }
+    });
+
+    // Generate QR and send email
+    const qrDataUrl = await QRCode.toDataURL(order.ticketId, { width: 200 });
+    const participant = await Participant.findById(order.user).select('email name').lean();
+
+    sendMerchandiseEmail({
+      toEmail: participant?.email,
+      participantName: participant?.name || 'Customer',
+      eventTitle: event.title,
+      ticketId: order.ticketId,
+      totalPrice: order.totalPrice,
+    }).catch((e) => console.error('[email]', e.message));
+
+    return res.status(200).json({
+      message: 'Order approved. QR sent to participant.',
+      qrDataUrl,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while approving order.' });
+  }
+}
+
+// ── PATCH /organizerEvents/orders/:orderId/reject ─────────────────────────────
+export async function rejectOrder(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { orderId } = req.params;
+    const { reason } = req.body;
+
+    const order = await MerchandiseOrder.findById(orderId).populate('event', 'organizer title');
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+
+    if (String(order.event.organizer) !== String(organizerId)) {
+      return res.status(403).json({ message: 'Not your event.' });
+    }
+
+    if (order.paymentStatus === 'rejected') {
+      return res.status(400).json({ message: 'Order is already rejected.' });
+    }
+
+    order.paymentStatus = 'rejected';
+    order.status = 'pending';
+    await order.save();
+
+    return res.status(200).json({ message: 'Order rejected.' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while rejecting order.' });
   }
 }

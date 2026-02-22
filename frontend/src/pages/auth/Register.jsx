@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { registerUser } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
+import ReCAPTCHA from 'react-google-recaptcha';
 import '../../styles/Auth.css';
 
 const Register = () => {
@@ -18,6 +19,9 @@ const Register = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+
+  const captchaSiteKey = import.meta.env.VITE_CAPTCHA_SITE_KEY || '';
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -33,7 +37,13 @@ const Register = () => {
     setLoading(true);
 
     try {
-      const response = await registerUser(formData);
+      if (!captchaToken) {
+        throw new Error('Please complete CAPTCHA verification.');
+      }
+
+      const payload = { ...formData, captchaToken }
+
+      const response = await registerUser(payload);
       login(
         {
           _id: response._id,
@@ -136,6 +146,15 @@ const Register = () => {
                 name="organisation"
                 value={formData.organisation}
                 onChange={handleChange}
+              />
+            </div>
+          )}
+
+          {captchaSiteKey && (
+            <div style={{ marginBottom: 12 }}>
+              <ReCAPTCHA
+                sitekey={captchaSiteKey}
+                onChange={(token) => setCaptchaToken(token || '')}
               />
             </div>
           )}

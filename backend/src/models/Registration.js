@@ -44,6 +44,11 @@ const MerchandiseOrder = Registration.discriminator('order', new mongoose.Schema
   quantity: { type: Number, default: 1 },
   totalPrice: { type: Number },
   
+  formResponses: [{
+    label: String,
+    answer: mongoose.Schema.Types.Mixed
+  }],
+
   paymentProofUrl : { type: String },
   paymentStatus: { 
     type: String, 

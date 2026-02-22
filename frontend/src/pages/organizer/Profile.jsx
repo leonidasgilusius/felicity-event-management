@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import OrganizerSidebar from '../../components/OrganizerSidebar';
-import { getOrganizerProfile, updateOrganizerProfile } from '../../utils/api';
+import {
+    getOrganizerProfile,
+    updateOrganizerProfile,
+    createOrganizerPasswordResetRequest,
+    listOrganizerPasswordResetRequests,
+} from '../../utils/api';
 import '../../styles/Dashboard.css';
 
 const OrganizerProfile = () => {
@@ -13,6 +18,20 @@ const OrganizerProfile = () => {
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState('');
     const [error, setError] = useState('');
+    const [resetReason, setResetReason] = useState('');
+    const [resetRequests, setResetRequests] = useState([]);
+    const [resetMsg, setResetMsg] = useState('');
+    const [resetError, setResetError] = useState('');
+    const [submittingReset, setSubmittingReset] = useState(false);
+
+    const loadResetRequests = async () => {
+        try {
+            const data = await listOrganizerPasswordResetRequests();
+            setResetRequests(data.requests || []);
+        } catch {
+            // keep profile usable even if request history fails
+        }
+    };
 
     useEffect(() => {
         getOrganizerProfile()
@@ -29,6 +48,8 @@ const OrganizerProfile = () => {
             })
             .catch((e) => setError(e || 'Failed to load profile.'))
             .finally(() => setLoading(false));
+
+            loadResetRequests();
     }, []);
 
     const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -46,6 +67,29 @@ const OrganizerProfile = () => {
             setError(err || 'Failed to update profile.');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleResetRequest = async (e) => {
+        e.preventDefault();
+        setResetMsg('');
+        setResetError('');
+
+        if (!resetReason.trim()) {
+            setResetError('Please provide a reason for password reset request.');
+            return;
+        }
+
+        setSubmittingReset(true);
+        try {
+            await createOrganizerPasswordResetRequest(resetReason.trim());
+            setResetReason('');
+            setResetMsg('Password reset request submitted to admin.');
+            await loadResetRequests();
+        } catch (err) {
+            setResetError(err || 'Failed to submit password reset request.');
+        } finally {
+            setSubmittingReset(false);
         }
     };
 
@@ -151,6 +195,57 @@ const OrganizerProfile = () => {
                                 {saving ? 'Saving…' : 'Save Profile'}
                             </button>
                         </form>
+                    )}
+
+                    {!loading && (
+                        <div style={{ marginTop: 28, maxWidth: 560 }}>
+                            <h4 style={{ marginBottom: 10 }}>Password Reset Request</h4>
+                            <form onSubmit={handleResetRequest} className="organizer-form">
+                                <label style={{ fontSize: 13, fontWeight: 600, color: '#444' }}>Reason</label>
+                                <textarea
+                                    rows={3}
+                                    placeholder="Explain why you need password reset"
+                                    value={resetReason}
+                                    onChange={(e) => setResetReason(e.target.value)}
+                                />
+                                <button type="submit" className="card-button" disabled={submittingReset}>
+                                    {submittingReset ? 'Submitting…' : 'Request Password Reset from Admin'}
+                                </button>
+                            </form>
+
+                            {resetError && <p className="error-message" style={{ marginTop: 8 }}>{resetError}</p>}
+                            {resetMsg && <p style={{ color: '#27ae60', marginTop: 8, fontWeight: 600 }}>{resetMsg}</p>}
+
+                            <div style={{ marginTop: 14 }}>
+                                <h5 style={{ marginBottom: 8 }}>Request Status History</h5>
+                                {resetRequests.length === 0 ? (
+                                    <p style={{ color: '#777' }}>No password reset requests yet.</p>
+                                ) : (
+                                    <div className="participant-table-container">
+                                        <table className="participant-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Reason</th>
+                                                    <th>Status</th>
+                                                    <th>Admin Comment</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {resetRequests.map((request) => (
+                                                    <tr key={request._id}>
+                                                        <td>{new Date(request.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                                                        <td style={{ maxWidth: 260 }}>{request.reason}</td>
+                                                        <td>{request.status}</td>
+                                                        <td>{request.adminComment || '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </section>
             </div>

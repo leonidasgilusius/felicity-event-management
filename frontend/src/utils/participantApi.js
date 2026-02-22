@@ -29,6 +29,16 @@ export const unregisterFromEvent = async (id) => {
   return response.data;
 };
 
+export const submitEventFeedback = async (eventId, payload) => {
+  const response = await api.post(`/participantEvents/${eventId}/feedback`, payload);
+  return response.data;
+};
+
+export const uploadPaymentProof = async (eventId, payload) => {
+  const response = await api.put(`/participantEvents/${eventId}/payment-proof`, payload);
+  return response.data;
+};
+
 // ── Organisers ────────────────────────────────────────────────────────────────
 export const listOrganizers = async () => {
   const response = await api.get('/participantOrganizers');

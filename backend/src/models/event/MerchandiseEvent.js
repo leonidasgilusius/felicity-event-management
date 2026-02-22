@@ -11,7 +11,16 @@ const MerchandiseEvent = Event.discriminator('merchandise', new mongoose.Schema(
     details: { type: mongoose.Schema.Types.Mixed }
   }],
   
-  maxPerUser: { type: Number, default: 1 }
+  maxPerUser: { type: Number, default: 1 },
+  paymentDetails: { type: String, default: '' },
+
+  formSchema: [{
+    label: String,
+    fieldType: { type: String, enum: ['text', 'number', 'file', 'dropdown', 'checkbox', 'textarea'] },
+    options: [String],
+    required: { type: Boolean, default: false },
+    order: { type: Number, default: 0 }
+  }]
 }));
 
 export default MerchandiseEvent

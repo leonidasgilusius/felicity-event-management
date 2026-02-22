@@ -1,10 +1,14 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import OrganizerSidebar from '../../components/OrganizerSidebar';
+import EventForum from '../../components/EventForum';
 import {
   getOrganizerEventDetail,
+  getOrganizerEventFeedback,
   updateOrganizerEvent,
   changeOrganizerEventStatus,
+  updateOrganizerEventFormSchema,
+  publishOrganizerEvent,
 } from '../../utils/api';
 import '../../styles/Dashboard.css';
 import '../../styles/OrganizerEventDetail.css';
@@ -56,6 +60,19 @@ const OrganizerEventDetail = () => {
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Form schema editor
+  const [formFields, setFormFields] = useState([]);
+  const [newField, setNewField] = useState({
+    label: '',
+    fieldType: 'text',
+    optionsText: '',
+    required: false,
+  });
+  const [formMsg, setFormMsg] = useState('');
+  const [formError, setFormError] = useState('');
+  const [savingForm, setSavingForm] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
   // Status change
   const [statusMsg, setStatusMsg] = useState('');
   const [statusError, setStatusError] = useState('');
@@ -63,6 +80,12 @@ const OrganizerEventDetail = () => {
   // Participants table filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Feedback analytics
+  const [feedbackStats, setFeedbackStats] = useState({ total: 0, averageRating: 0, ratingBreakdown: [] });
+  const [feedbackList, setFeedbackList] = useState([]);
+  const [feedbackFilter, setFeedbackFilter] = useState('all');
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -77,12 +100,39 @@ const OrganizerEventDetail = () => {
             : '',
           registrationLimit: d.event.registrationLimit || '',
         });
+        const sortedSchema = [...(d.event.formSchema || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        setFormFields(sortedSchema.map((field, index) => ({
+          label: field.label || '',
+          fieldType: field.fieldType || 'text',
+          options: Array.isArray(field.options) ? field.options : [],
+          required: Boolean(field.required),
+          order: Number.isFinite(field.order) ? field.order : index,
+        })));
       })
       .catch((e) => setError(e || 'Failed to load event.'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [eventId]);
+
+  const loadFeedback = async (rating = null) => {
+    setFeedbackLoading(true);
+    try {
+      const data = await getOrganizerEventFeedback(eventId, rating);
+      setFeedbackStats(data.stats || { total: 0, averageRating: 0, ratingBreakdown: [] });
+      setFeedbackList(data.feedback || []);
+    } catch (e) {
+      // keep page functional even if feedback fails
+      console.error(e);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const numeric = feedbackFilter === 'all' ? null : Number(feedbackFilter);
+    loadFeedback(numeric);
+  }, [eventId, feedbackFilter]);
 
   const handleEditSave = async () => {
     setSaving(true);
@@ -114,6 +164,65 @@ const OrganizerEventDetail = () => {
       load();
     } catch (e) {
       setStatusError(e || 'Failed to change status.');
+    }
+  };
+
+  const addField = () => {
+    if (!newField.label.trim()) return;
+    const nextField = {
+      label: newField.label.trim(),
+      fieldType: newField.fieldType,
+      required: newField.required,
+      options: newField.fieldType === 'dropdown'
+        ? newField.optionsText.split(',').map((o) => o.trim()).filter(Boolean)
+        : [],
+      order: formFields.length,
+    };
+    setFormFields((previous) => [...previous, nextField]);
+    setNewField({ label: '', fieldType: 'text', optionsText: '', required: false });
+  };
+
+  const moveField = (index, direction) => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= formFields.length) return;
+    const nextFields = [...formFields];
+    const [movedField] = nextFields.splice(index, 1);
+    nextFields.splice(targetIndex, 0, movedField);
+    setFormFields(nextFields.map((field, fieldIndex) => ({ ...field, order: fieldIndex })));
+  };
+
+  const removeField = (index) => {
+    const nextFields = formFields.filter((_, fieldIndex) => fieldIndex !== index);
+    setFormFields(nextFields.map((field, fieldIndex) => ({ ...field, order: fieldIndex })));
+  };
+
+  const handleSaveFormFields = async () => {
+    setSavingForm(true);
+    setFormError('');
+    setFormMsg('');
+    try {
+      await updateOrganizerEventFormSchema(eventId, formFields);
+      setFormMsg('Form fields saved.');
+      load();
+    } catch (e) {
+      setFormError(e || 'Failed to save form fields.');
+    } finally {
+      setSavingForm(false);
+    }
+  };
+
+  const handlePublishDraft = async () => {
+    setPublishing(true);
+    setFormError('');
+    setFormMsg('');
+    try {
+      await publishOrganizerEvent(eventId);
+      setFormMsg('Draft published successfully.');
+      load();
+    } catch (e) {
+      setFormError(e || 'Failed to publish draft.');
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -182,6 +291,24 @@ const OrganizerEventDetail = () => {
             {isEditable && (
               <button className="oed-edit-toggle" onClick={() => { setEditMode(!editMode); setEditMsg(''); setEditError(''); }}>
                 {editMode ? 'Cancel' : 'Edit'}
+              </button>
+            )}
+            {event.type === 'merchandise' && (
+              <button
+                className="oed-edit-toggle"
+                style={{ background: '#1a73e8', color: 'white', borderColor: '#1a73e8' }}
+                onClick={() => navigate(`/organizer/events/${eventId}/orders`)}
+              >
+                Manage Orders
+              </button>
+            )}
+            {event.type === 'normal' && displayStatus === 'Ongoing' && (
+              <button
+                className="oed-edit-toggle"
+                style={{ background: '#27ae60', color: 'white', borderColor: '#27ae60' }}
+                onClick={() => navigate(`/organizer/events/${eventId}/attendance`)}
+              >
+                Attendance
               </button>
             )}
           </div>
@@ -318,6 +445,105 @@ const OrganizerEventDetail = () => {
           </div>
         )}
 
+        {/* ── Form Schema (editable until first registration) ── */}
+        {(isDraft || isPublished) && (
+          <div className="oed-card">
+            <h3 className="oed-section-title">Registration Form Schema</h3>
+            <p className="oed-edit-note" style={{ marginTop: 0 }}>
+              Editable until first registration. After first registration, schema is locked.
+            </p>
+
+            <div className="oed-filters" style={{ marginBottom: 10 }}>
+              <input
+                placeholder="Field label (e.g. Roll Number / Address)"
+                value={newField.label}
+                onChange={(e) => setNewField({ ...newField, label: e.target.value })}
+              />
+              <select
+                className="oed-filter-select"
+                value={newField.fieldType}
+                onChange={(e) => setNewField({ ...newField, fieldType: e.target.value })}
+              >
+                <option value="text">Text</option>
+                <option value="textarea">Long Text</option>
+                <option value="number">Number</option>
+                <option value="dropdown">Dropdown</option>
+                <option value="checkbox">Checkbox</option>
+                <option value="file">File Upload</option>
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={newField.required}
+                  onChange={(e) => setNewField({ ...newField, required: e.target.checked })}
+                />
+                Required
+              </label>
+            </div>
+
+            {newField.fieldType === 'dropdown' && (
+              <input
+                className="oed-search"
+                placeholder="Dropdown options (comma-separated)"
+                value={newField.optionsText}
+                onChange={(e) => setNewField({ ...newField, optionsText: e.target.value })}
+                style={{ marginBottom: 12 }}
+              />
+            )}
+
+            <button className="oed-export-btn" onClick={addField} style={{ marginBottom: 14 }}>
+              + Add Field
+            </button>
+
+            {formFields.length === 0 ? (
+              <p className="oed-empty">No fields added yet.</p>
+            ) : (
+              <div className="oed-table-wrap" style={{ marginBottom: 12 }}>
+                <table className="oed-table">
+                  <thead>
+                    <tr>
+                      <th>Label</th>
+                      <th>Type</th>
+                      <th>Required</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formFields.map((field, index) => (
+                      <tr key={`${field.label}-${index}`}>
+                        <td>{field.label}</td>
+                        <td>
+                          {field.fieldType}
+                          {field.options?.length > 0 ? ` [${field.options.join(', ')}]` : ''}
+                        </td>
+                        <td>{field.required ? 'Yes' : 'No'}</td>
+                        <td>
+                          <button className="oed-export-btn" onClick={() => moveField(index, 'up')} disabled={index === 0} style={{ marginRight: 6 }}>↑</button>
+                          <button className="oed-export-btn" onClick={() => moveField(index, 'down')} disabled={index === formFields.length - 1} style={{ marginRight: 6 }}>↓</button>
+                          <button className="oed-status-btn oed-status-btn-closed" onClick={() => removeField(index)}>Remove</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="oed-action-btns">
+              <button className="oed-status-btn oed-status-btn-published" onClick={handleSaveFormFields} disabled={savingForm}>
+                {savingForm ? 'Saving…' : 'Save Form Fields'}
+              </button>
+              {isDraft && (
+                <button className="oed-status-btn oed-status-btn-ongoing" onClick={handlePublishDraft} disabled={publishing}>
+                  {publishing ? 'Publishing…' : 'Publish Draft'}
+                </button>
+              )}
+            </div>
+            {formMsg && <p className="oed-success">{formMsg}</p>}
+            {formError && <p className="error-message">{formError}</p>}
+          </div>
+        )}
+
         {/* ── Participants ── */}
         <div className="oed-card">
           <div className="oed-participants-header">
@@ -393,6 +619,74 @@ const OrganizerEventDetail = () => {
             </div>
           )}
         </div>
+
+        <EventForum eventId={eventId} />
+
+        {event.type === 'normal' && (
+          <div className="oed-card">
+            <h3 className="oed-section-title">Anonymous Feedback</h3>
+
+            <div className="oed-analytics-grid" style={{ marginBottom: 12 }}>
+              <div className="oed-stat">
+                <span className="oed-stat-value">{feedbackStats.total || 0}</span>
+                <span className="oed-stat-label">Total Feedback</span>
+              </div>
+              <div className="oed-stat">
+                <span className="oed-stat-value">{feedbackStats.averageRating || 0}</span>
+                <span className="oed-stat-label">Average Rating</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {['all', 5, 4, 3, 2, 1].map((rating) => (
+                <button
+                  key={String(rating)}
+                  className="oed-export-btn"
+                  onClick={() => setFeedbackFilter(String(rating))}
+                  style={{
+                    background: feedbackFilter === String(rating) ? '#1a73e8' : undefined,
+                    color: feedbackFilter === String(rating) ? 'white' : undefined,
+                  }}
+                >
+                  {rating === 'all' ? 'All Ratings' : `${rating}★`}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: 10, fontSize: 13, color: '#555' }}>
+              {(feedbackStats.ratingBreakdown || []).map((row) => (
+                <span key={row.rating} style={{ marginRight: 10 }}>{row.rating}★: {row.count}</span>
+              ))}
+            </div>
+
+            {feedbackLoading ? (
+              <p>Loading feedback…</p>
+            ) : feedbackList.length === 0 ? (
+              <p className="oed-empty">No feedback available for this filter.</p>
+            ) : (
+              <div className="oed-table-wrap">
+                <table className="oed-table">
+                  <thead>
+                    <tr>
+                      <th>Rating</th>
+                      <th>Comment</th>
+                      <th>Submitted On</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feedbackList.map((item) => (
+                      <tr key={item._id}>
+                        <td>{'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)}</td>
+                        <td>{item.comment || '—'}</td>
+                        <td>{fmtDate(item.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import Organizer from '../../models/user/Organizer.js';
+import PasswordResetRequest from '../../models/PasswordResetRequest.js';
 
 // ── GET /organizerProfile ─────────────────────────────────────────────────────
 export async function getOrganizerProfile(req, res) {
@@ -45,5 +46,51 @@ export async function updateOrganizerProfile(req, res) {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error while updating organizer profile.' });
+  }
+}
+
+// ── POST /organizerProfile/password-reset-request ────────────────────────────
+export async function createPasswordResetRequest(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const { reason } = req.body;
+
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ message: 'Reason is required.' });
+    }
+
+    const pending = await PasswordResetRequest.findOne({ organizer: organizerId, status: 'Pending' }).lean();
+    if (pending) {
+      return res.status(400).json({ message: 'You already have a pending password reset request.' });
+    }
+
+    const request = await PasswordResetRequest.create({
+      organizer: organizerId,
+      reason: String(reason).trim(),
+      status: 'Pending',
+    });
+
+    return res.status(201).json({
+      message: 'Password reset request submitted to admin.',
+      request,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while creating password reset request.' });
+  }
+}
+
+// ── GET /organizerProfile/password-reset-requests ────────────────────────────
+export async function listOwnPasswordResetRequests(req, res) {
+  try {
+    const organizerId = req.user._id;
+    const requests = await PasswordResetRequest.find({ organizer: organizerId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ requests });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while listing password reset requests.' });
   }
 }

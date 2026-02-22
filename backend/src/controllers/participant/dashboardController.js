@@ -58,6 +58,10 @@ function isUpcoming(record) {
     return false;
   }
 
+  if (CANCELLED_REJECTED_STATUSES.includes(record.participationStatus)) {
+    return false;
+  }
+
   return new Date(record.schedule.startDate).getTime() >= Date.now();
 }
 

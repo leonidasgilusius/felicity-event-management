@@ -16,7 +16,7 @@ const CreateEvent = () => {
 
     const defaultDate = getTodayAtMidnight()
 
-    const [draftForm, setDraftForm] = useState({
+    const getInitialDraftForm = () => ({
         title: '',
         description: '',
         eventType: 'normal',
@@ -28,8 +28,15 @@ const CreateEvent = () => {
         eligibility: 'All',
         eventTags: '',
         location: '',
+        stock: 50,
+        maxPerUser: 1,
+        paymentDetails: '',
     });
+
+    const [draftForm, setDraftForm] = useState(getInitialDraftForm());
     const [draftEvent, setDraftEvent] = useState(null);
+    const [variants, setVariants] = useState([]);           // [{ name, optionsText }]
+    const [newVariant, setNewVariant] = useState({ name: '', optionsText: '' });
     const [formFields, setFormFields] = useState([]);
     const [newField, setNewField] = useState({
         label: '',
@@ -56,8 +63,21 @@ const CreateEvent = () => {
             eventTags: draftForm.eventTags
             .split(',')
             .map((tag) => tag.trim())
-            .filter(Boolean)
+            .filter(Boolean),
         };
+
+        if (draftForm.eventType === 'merchandise') {
+            payload.stock = Number(draftForm.stock);
+            payload.registrationLimit = Number(draftForm.stock); // limit = stock for merch
+            payload.maxPerUser = Number(draftForm.maxPerUser);
+            payload.paymentDetails = draftForm.paymentDetails;
+            payload.variants = variants.map((v) => ({
+                name: v.name,
+                details: Object.fromEntries(
+                    v.optionsText.split(',').map((o) => o.trim()).filter(Boolean).map((o) => [o, true])
+                ),
+            }));
+        }
 
         const response = await createOrganizerDraftEvent(payload);
         setDraftEvent(response.event);
@@ -113,11 +133,26 @@ const CreateEvent = () => {
     };
 
     const handlePublishDraft = async () => {
-        if (!draftEvent) return;
+        if (!draftEvent) {
+            setCreateFlowMessage('Create a draft first.');
+            return;
+        }
+
         setCreateFlowMessage('');
         try {
         await publishOrganizerEvent(draftEvent._id);
-        setCreateFlowMessage('Event published successfully.');
+        setCreateFlowMessage('Event published successfully. You can start a new draft now.');
+        setDraftEvent(null);
+        setDraftForm(getInitialDraftForm());
+        setVariants([]);
+        setNewVariant({ name: '', optionsText: '' });
+        setFormFields([]);
+        setNewField({
+            label: '',
+            fieldType: 'text',
+            optionsText: '',
+            required: false
+        });
         } catch (publishError) {
         setCreateFlowMessage(publishError.response?.data?.message || 'Failed to publish event.');
         }
@@ -168,15 +203,19 @@ const CreateEvent = () => {
                     required
                 />
 
-                <label>Registration Limit</label>
-                <input
-                    type="number"
-                    name="registrationLimit"
-                    placeholder="e.g. 100"
-                    value={draftForm.registrationLimit}
-                    onChange={onDraftInputChange}
-                    required
-                />
+                {draftForm.eventType === 'normal' && (
+                    <>
+                        <label>Registration Limit</label>
+                        <input
+                            type="number"
+                            name="registrationLimit"
+                            placeholder="e.g. 100"
+                            value={draftForm.registrationLimit}
+                            onChange={onDraftInputChange}
+                            required
+                        />
+                    </>
+                )}
 
                 <label>Registration Fee (₹)</label>
                 <input
@@ -209,6 +248,65 @@ const CreateEvent = () => {
                     </>
                 )}
 
+                {draftForm.eventType === 'merchandise' && (
+                    <>
+                        <label>Stock (total units available)</label>
+                        <input
+                            type="number" name="stock" min={1}
+                            value={draftForm.stock}
+                            onChange={onDraftInputChange} required
+                        />
+
+                        <label>Max Per User</label>
+                        <input
+                            type="number" name="maxPerUser" min={1}
+                            value={draftForm.maxPerUser}
+                            onChange={onDraftInputChange} required
+                        />
+
+                        <label>Payment Details <span style={{ fontWeight: 400, color: '#888' }}>(UPI / bank account shown to buyers)</span></label>
+                        <textarea
+                            name="paymentDetails"
+                            placeholder="e.g. UPI: name@upi  or  Account: 123456789, IFSC: SBIN0001234"
+                            value={draftForm.paymentDetails}
+                            onChange={onDraftInputChange}
+                            rows={2}
+                        />
+
+                        <label>Variants <span style={{ fontWeight: 400, color: '#888' }}>(optional, e.g. Size, Colour)</span></label>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                            <input
+                                placeholder="Variant name (e.g. Size)"
+                                value={newVariant.name}
+                                onChange={(e) => setNewVariant({ ...newVariant, name: e.target.value })}
+                                style={{ flex: 1 }}
+                            />
+                            <input
+                                placeholder="Options (comma-separated, e.g. S, M, L, XL)"
+                                value={newVariant.optionsText}
+                                onChange={(e) => setNewVariant({ ...newVariant, optionsText: e.target.value })}
+                                style={{ flex: 2 }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!newVariant.name.trim()) return;
+                                    setVariants([...variants, { ...newVariant }]);
+                                    setNewVariant({ name: '', optionsText: '' });
+                                }}
+                                style={{ padding: '8px 14px', background: '#eef2ff', color: '#667eea', border: '1.5px solid #667eea', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}
+                            >+ Add</button>
+                        </div>
+                        {variants.map((v, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, background: '#f8f9fb', padding: '6px 10px', borderRadius: 6 }}>
+                                <span style={{ fontWeight: 600, minWidth: 80 }}>{v.name}:</span>
+                                <span style={{ color: '#555', flex: 1 }}>{v.optionsText}</span>
+                                <button type="button" onClick={() => setVariants(variants.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+                            </div>
+                        ))}
+                    </>
+                )}
+
                 <label>Tags <span style={{ fontWeight: 400, color: '#888' }}>(comma-separated)</span></label>
                 <input
                     name="eventTags"
@@ -227,7 +325,9 @@ const CreateEvent = () => {
                 <div className="organizer-form-builder" style={{ marginTop: 28 }}>
                     <h4 style={{ marginBottom: 16 }}>Step 2 — Registration Form Fields</h4>
                     <p style={{ fontSize: 13, color: '#666', marginTop: 0, marginBottom: 16 }}>
-                        Define the fields participants will fill in when registering. Fields are locked after the first registration.
+                        {draftEvent.type === 'merchandise'
+                            ? 'Optional: add extra fields for buyers (e.g. delivery address, phone number).'
+                            : 'Define the fields participants will fill in when registering. Fields are locked after the first registration.'}
                     </p>
 
                     {/* Add field row */}
@@ -316,6 +416,7 @@ const CreateEvent = () => {
                     </div>
                 </div>
             )}
+
 
             {createFlowMessage && (
                 <p style={{

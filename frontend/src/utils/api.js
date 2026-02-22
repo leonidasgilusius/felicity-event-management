@@ -69,6 +69,12 @@ export const getOrganizerEventDetail = async (eventId) => {
   return response.data;
 };
 
+export const getOrganizerEventFeedback = async (eventId, rating = null) => {
+  const params = rating ? { rating } : {};
+  const response = await api.get(`/organizerEvents/${eventId}/feedback`, { params });
+  return response.data;
+};
+
 export const updateOrganizerEvent = async (eventId, payload) => {
   const response = await api.patch(`/organizerEvents/${eventId}/edit`, payload);
   return response.data;
@@ -79,8 +85,78 @@ export const changeOrganizerEventStatus = async (eventId, status) => {
   return response.data;
 };
 
+export const getForumMessages = async (eventId) => {
+  const response = await api.get(`/forums/${eventId}/messages`);
+  return response.data;
+};
+
+export const createForumMessage = async (eventId, payload) => {
+  const response = await api.post(`/forums/${eventId}/messages`, payload);
+  return response.data;
+};
+
+export const toggleForumReaction = async (messageId, emoji) => {
+  const response = await api.patch(`/forums/messages/${messageId}/reaction`, { emoji });
+  return response.data;
+};
+
+export const toggleForumPin = async (messageId, isPinned) => {
+  const response = await api.patch(`/forums/messages/${messageId}/pin`, { isPinned });
+  return response.data;
+};
+
+export const deleteForumMessage = async (messageId) => {
+  const response = await api.delete(`/forums/messages/${messageId}`);
+  return response.data;
+};
+
+export const getAttendanceOverview = async (eventId) => {
+  const response = await api.get(`/organizerEvents/${eventId}/attendance`);
+  return response.data;
+};
+
+export const scanAttendanceTicket = async (eventId, ticketId) => {
+  const response = await api.post(`/organizerEvents/${eventId}/attendance/scan`, { ticketId });
+  return response.data;
+};
+
+export const manualMarkAttendance = async (eventId, registrationId, note = '') => {
+  const response = await api.post(`/organizerEvents/${eventId}/attendance/manual`, { registrationId, note });
+  return response.data;
+};
+
+export const getEventOrders = async (eventId) => {
+  const response = await api.get(`/organizerEvents/${eventId}/orders`);
+  return response.data;
+};
+
+export const getOrderProof = async (orderId) => {
+  const response = await api.get(`/organizerEvents/orders/${orderId}/proof`);
+  return response.data; // { paymentProofUrl }
+};
+
+export const approveOrder = async (orderId) => {
+  const response = await api.patch(`/organizerEvents/orders/${orderId}/approve`);
+  return response.data;
+};
+
+export const rejectOrder = async (orderId) => {
+  const response = await api.patch(`/organizerEvents/orders/${orderId}/reject`);
+  return response.data;
+};
+
 export const getOrganizerProfile = async () => {
   const response = await api.get('/organizerProfile');
+  return response.data;
+};
+
+export const createOrganizerPasswordResetRequest = async (reason) => {
+  const response = await api.post('/organizerProfile/password-reset-request', { reason });
+  return response.data;
+};
+
+export const listOrganizerPasswordResetRequests = async () => {
+  const response = await api.get('/organizerProfile/password-reset-requests');
   return response.data;
 };
 
@@ -101,6 +177,21 @@ export const adminCreateOrganizer = async (payload) => {
 
 export const adminToggleDisableOrganizer = async (id) => {
   const response = await api.patch(`/admin/organizers/${id}/disable`);
+  return response.data;
+};
+
+export const adminListPasswordResetRequests = async () => {
+  const response = await api.get('/admin/password-reset-requests');
+  return response.data;
+};
+
+export const adminApprovePasswordResetRequest = async (id, comment = '') => {
+  const response = await api.patch(`/admin/password-reset-requests/${id}/approve`, { comment });
+  return response.data;
+};
+
+export const adminRejectPasswordResetRequest = async (id, comment = '') => {
+  const response = await api.patch(`/admin/password-reset-requests/${id}/reject`, { comment });
   return response.data;
 };
 

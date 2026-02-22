@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getOrganizerDashboardData } from '../../utils/api';
 import OrganizerSidebar from '../../components/OrganizerSidebar';
@@ -6,6 +7,7 @@ import '../../styles/Dashboard.css';
 
 const OrganizerDashboard = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [dashboardData, setDashboardData] = useState({
         events: [],
         totalEventAnalytics: { registrations: 0, sales: 0, revenue: 0, attendance: 0 }
@@ -80,7 +82,7 @@ const OrganizerDashboard = () => {
                                             <button
                                                 type="button"
                                                 className={`card-button ${selectedEventId === event._id ? 'active' : ''}`}
-                                                onClick={() => setSelectedEventId(event._id)}
+                                                onClick={() => navigate(`/organizer/events/${event._id}`)}
                                             >
                                                 View Details
                                             </button>
