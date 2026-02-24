@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { loginUser } from '../../utils/api';
+import { loginUser, getErrorMessage } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import ReCAPTCHA from 'react-google-recaptcha';
 import '../../styles/Auth.css';
@@ -15,6 +15,8 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaRenderKey, setCaptchaRenderKey] = useState(0);
+  const captchaRef = useRef(null);
 
   const captchaSiteKey = import.meta.env.VITE_CAPTCHA_SITE_KEY || '';
 
@@ -49,7 +51,7 @@ const Login = () => {
 
       const normalizedRole = response.role?.toLowerCase();
 
-      // Navigate based on role
+      
       switch (normalizedRole) {
         case 'admin':
           navigate('/admin-dashboard');
@@ -64,7 +66,10 @@ const Login = () => {
           navigate('/');
       }
     } catch (err) {
-      setError(err || 'Login failed. Please try again.');
+      setError(getErrorMessage(err, 'Login failed. Please try again.'));
+      setCaptchaToken('');
+      captchaRef.current?.reset();
+      setCaptchaRenderKey(prev => prev + 1);
     } finally {
       setLoading(false);
     }
@@ -105,8 +110,11 @@ const Login = () => {
           {captchaSiteKey && (
             <div style={{ marginBottom: 12 }}>
               <ReCAPTCHA
+                key={captchaRenderKey}
+                ref={captchaRef}
                 sitekey={captchaSiteKey}
                 onChange={(token) => setCaptchaToken(token || '')}
+                onExpired={() => setCaptchaToken('')}
               />
             </div>
           )}

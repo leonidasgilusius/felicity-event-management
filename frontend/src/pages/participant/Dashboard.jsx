@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getParticipantDashboardData } from '../../utils/api';
-import ParticipantSidebar from '../../components/ParticipantSidebar';
+import { getParticipantDashboardData, getErrorMessage } from '../../utils/api';
+import ParticipantSidebar from '../../components/Participant/ParticipantSidebar';
 import '../../styles/Dashboard.css';
+
+import ParticipationHistory from '../../components/Participant/History';
 
 const ParticipantDashboard = () => {
   const { user } = useAuth();
@@ -19,7 +21,7 @@ const ParticipantDashboard = () => {
         const data = await getParticipantDashboardData();
         setUpcomingEvents(data.upcomingEvents || []);
       } catch (error) {
-        setLoadError(error || 'Failed to load dashboard.');
+        setLoadError(getErrorMessage(error, 'Failed to load dashboard.'));
       } finally {
         setLoadingData(false);
       }
@@ -27,11 +29,8 @@ const ParticipantDashboard = () => {
     fetchParticipantData();
   }, []);
 
-  const formatSchedule = (schedule) => {
-    if (!schedule?.startDate) return 'Schedule unavailable';
-    const start = new Date(schedule.startDate).toLocaleString();
-    const end = schedule.endDate ? new Date(schedule.endDate).toLocaleString() : null;
-    return end ? `${start} - ${end}` : start;
+  const openEventDetails = (eventId) => {
+    navigate(`/participant/events/${eventId}`);
   };
 
   return (
@@ -58,19 +57,22 @@ const ParticipantDashboard = () => {
                   key={event.registrationId}
                   className="participant-event-item"
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/participant/events/${event.eventId}`)}
+                  onClick={() => openEventDetails(event.eventId)}
                 >
                   <div className="participant-event-item-header">
                     <strong>{event.eventName}</strong>
                     <span>Type: {event.eventType}</span>
                     <span>Organizer: {event.organizer}</span>
-                    <span>Schedule: {formatSchedule(event.schedule)}</span>
+                    <span>Status: {event.participationStatus}</span>
+                    <span>Ticket ID: {event.ticketId}</span>
                   </div>
                 </div>
               ))}
             </div>
           )}
         </section>
+
+        < ParticipationHistory />
       </div>
     </div>
   );

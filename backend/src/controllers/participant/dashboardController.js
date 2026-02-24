@@ -54,35 +54,19 @@ function mapRegistration(registration) {
 }
 
 function isUpcoming(record) {
-  if (!record.schedule.startDate) {
-    return false;
-  }
-
   if (CANCELLED_REJECTED_STATUSES.includes(record.participationStatus)) {
     return false;
   }
 
-  return new Date(record.schedule.startDate).getTime() >= Date.now();
-}
-
-function getCategory(record) {
   if (record.participationStatus === 'completed') {
-    return 'Completed';
+    return false;
   }
 
-  if (CANCELLED_REJECTED_STATUSES.includes(record.participationStatus)) {
-    return 'Cancelled/Rejected';
+  if (record.schedule.endDate && new Date(record.schedule.endDate).getTime() <= Date.now()) {
+    return false;
   }
 
-  if (record.eventType === 'normal') {
-    return 'Normal';
-  }
-
-  if (record.eventType === 'merchandise') {
-    return 'Merchandise';
-  }
-
-  return 'Normal';
+  return true;
 }
 
 export async function getParticipantDashboard(req, res) {
@@ -115,10 +99,18 @@ export async function getParticipantDashboard(req, res) {
       'Cancelled/Rejected': []
     };
 
-    records.forEach((record) => {
-      const category = getCategory(record);
-      participationHistory[category].push(record);
-    });
+    const historyRecords = records.filter((record) => !isUpcoming(record));
+
+    participationHistory.Normal = historyRecords.filter(
+      (record) => String(record.eventType || '').toLowerCase() === 'normal'
+    );
+    participationHistory.Merchandise = historyRecords.filter(
+      (record) => String(record.eventType || '').toLowerCase() === 'merchandise'
+    );
+    participationHistory.Completed = historyRecords.filter((record) => record.participationStatus === 'completed');
+    participationHistory['Cancelled/Rejected'] = historyRecords.filter((record) =>
+      CANCELLED_REJECTED_STATUSES.includes(record.participationStatus)
+    );
 
     return res.status(200).json({
       upcomingEvents,

@@ -1,15 +1,13 @@
-import User from '../../models/user/User.js';
+import Organizer from '../../models/user/Organizer.js';
 import Participant from '../../models/user/Participant.js';
 import Event from '../../models/event/Event.js';
 
-// ── GET /participantOrganizers ────────────────────────────────────────────────
 export const listOrganizers = async (req, res) => {
   try {
-    const organizers = await User.find({ role: 'Organizer', isDisabled: false, archived: false })
+    const organizers = await Organizer.find({ isDisabled: false, archived: false })
       .select('name email category description')
       .lean();
 
-    // Attach whether the participant follows each one
     const participant = await Participant.findById(req.user._id).select('followedOrganizers').lean();
     const followedSet = new Set((participant?.followedOrganizers || []).map(String));
 
@@ -25,28 +23,44 @@ export const listOrganizers = async (req, res) => {
   }
 };
 
-// ── GET /participantOrganizers/:id ────────────────────────────────────────────
 export const getOrganizerDetail = async (req, res) => {
   try {
-    const organizer = await User.findOne({ _id: req.params.id, role: 'Organizer' })
+    const organizer = await Organizer.findById(req.params.id)
       .select('name email category description')
       .lean();
 
     if (!organizer) return res.status(404).json({ message: 'Organizer not found.' });
 
+    const participant = await Participant.findById(req.user._id).select('followedOrganizers isIIIT').lean();
+    if (!participant) return res.status(404).json({ message: 'Participant not found.' });
+
     const now = new Date();
-    const upcoming = await Event.find({ organizer: organizer._id, startDate: { $gte: now }, status: { $in: ['published', 'ongoing'] } })
+    const visibilityFilter = participant.isIIIT ? {} : { eligibility: 'All' };
+
+    const upcoming = await Event.find({
+      organizer: organizer._id,
+      startDate: { $gte: now },
+      status: { $in: ['published', 'ongoing'] },
+      ...visibilityFilter,
+    })
       .select('title startDate endDate status type')
       .sort({ startDate: 1 })
       .lean();
 
-    const past = await Event.find({ organizer: organizer._id, endDate: { $lt: now } })
+    const past = await Event.find({
+      organizer: organizer._id,
+      status: { $ne: 'draft' },
+      $or: [
+        { endDate: { $lt: now } },
+        { status: { $in: ['closed', 'completed'] } },
+      ],
+      ...visibilityFilter,
+    })
       .select('title startDate endDate status type')
-      .sort({ endDate: -1 })
+      .sort({ updatedAt: -1, endDate: -1 })
       .limit(10)
       .lean();
 
-    const participant = await Participant.findById(req.user._id).select('followedOrganizers').lean();
     const isFollowed = (participant?.followedOrganizers || []).map(String).includes(String(organizer._id));
 
     return res.json({ organizer: { ...organizer, isFollowed }, upcoming, past });
@@ -56,7 +70,6 @@ export const getOrganizerDetail = async (req, res) => {
   }
 };
 
-// ── POST /participantOrganizers/:id/follow  (toggles) ─────────────────────────
 export const toggleFollowOrganizer = async (req, res) => {
   try {
     const participant = await Participant.findById(req.user._id).select('followedOrganizers');

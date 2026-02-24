@@ -1,7 +1,6 @@
 import Organizer from '../../models/user/Organizer.js';
 import PasswordResetRequest from '../../models/PasswordResetRequest.js';
 
-// ── GET /organizerProfile ─────────────────────────────────────────────────────
 export async function getOrganizerProfile(req, res) {
   try {
     const organizer = await Organizer.findById(req.user._id)
@@ -19,7 +18,6 @@ export async function getOrganizerProfile(req, res) {
   }
 }
 
-// ── PUT /organizerProfile ─────────────────────────────────────────────────────
 export async function updateOrganizerProfile(req, res) {
   try {
     const { name, category, description, contactEmail, contactPhone, discordWebhook } = req.body;
@@ -49,7 +47,6 @@ export async function updateOrganizerProfile(req, res) {
   }
 }
 
-// ── POST /organizerProfile/password-reset-request ────────────────────────────
 export async function createPasswordResetRequest(req, res) {
   try {
     const organizerId = req.user._id;
@@ -80,7 +77,6 @@ export async function createPasswordResetRequest(req, res) {
   }
 }
 
-// ── GET /organizerProfile/password-reset-requests ────────────────────────────
 export async function listOwnPasswordResetRequests(req, res) {
   try {
     const organizerId = req.user._id;

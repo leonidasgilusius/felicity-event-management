@@ -7,7 +7,67 @@ import Participant from '../../models/user/Participant.js';
 import QRCode from 'qrcode';
 import { sendTicketEmail, sendMerchandiseEmail } from '../../scripts/emailService.js';
 
-// ── GET /participantEvents/:id ────────────────────────────────────────────────
+function canParticipantAccessEvent(event, participant) {
+  if (!event || !participant) return false;
+  if (event.eligibility !== 'IIIT') return true;
+  return Boolean(participant.isIIIT);
+}
+
+function getRuntimeEventStatus(event) {
+  const now = Date.now();
+  const startMs = new Date(event.startDate).getTime();
+  const endMs = new Date(event.endDate).getTime();
+
+  if (event.status === 'draft') return 'draft';
+  if (event.status === 'closed' || event.status === 'completed') return 'completed';
+  if (Number.isFinite(endMs) && now > endMs) return 'completed';
+  if (Number.isFinite(startMs) && Number.isFinite(endMs) && now >= startMs && now <= endMs) {
+    return 'ongoing';
+  }
+  return 'published';
+}
+
+function isValidHttpUrl(value) {
+  try {
+    const parsed = new URL(String(value || '').trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function normalizeFormResponses(formSchema = [], incomingResponses = []) {
+  const responseMap = new Map(
+    (Array.isArray(incomingResponses) ? incomingResponses : []).map((response) => [
+      String(response?.label || '').trim(),
+      response?.answer,
+    ])
+  );
+
+  const normalized = [];
+
+  for (const field of Array.isArray(formSchema) ? formSchema : []) {
+    const label = String(field?.label || '').trim();
+    if (!label) continue;
+
+    let answer = responseMap.has(label) ? responseMap.get(label) : '';
+
+    if (field.fieldType === 'file') {
+      answer = String(answer || '').trim();
+      if (field.required && !answer) {
+        return { error: `${label} is required.` };
+      }
+      if (answer && !isValidHttpUrl(answer)) {
+        return { error: `${label} must be a valid http/https link.` };
+      }
+    }
+
+    normalized.push({ label, answer });
+  }
+
+  return { responses: normalized };
+}
+
 export const getEventDetail = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id)
@@ -16,7 +76,17 @@ export const getEventDetail = async (req, res) => {
 
     if (!event) return res.status(404).json({ message: 'Event not found.' });
 
-    // Check if the requesting participant is already registered
+    const participant = await Participant.findById(req.user._id).select('isIIIT').lean();
+    if (!participant) return res.status(404).json({ message: 'Participant not found.' });
+    if (!canParticipantAccessEvent(event, participant)) {
+      return res.status(404).json({ message: 'Event not found.' });
+    }
+
+    const eventWithRuntimeStatus = {
+      ...event,
+      status: getRuntimeEventStatus(event),
+    };
+
     const existing = await Registration.findOne({
       event: event._id,
       user: req.user._id,
@@ -36,7 +106,7 @@ export const getEventDetail = async (req, res) => {
         qrDataUrl,
         eventTitle: event.title,
         totalPrice: existing.totalPrice ?? null,
-        registrationFee: event.registrationFee,
+        registrationFee: eventWithRuntimeStatus.registrationFee,
         paymentStatus: existing.paymentStatus ?? null,
         hasProof: !!(existing.paymentProofUrl),
         message: existing.type === 'order'
@@ -49,7 +119,6 @@ export const getEventDetail = async (req, res) => {
       };
     }
 
-    // For merchandise: "alreadyRegistered" only blocks re-ordering if there's an active non-rejected pending/approved order
     const blocksNewOrder = existing && existing.type === 'order'
       ? existing.paymentStatus !== 'rejected'
       : !!existing;
@@ -60,15 +129,23 @@ export const getEventDetail = async (req, res) => {
       existing: null,
     };
 
-    if (event.type === 'normal') {
-      const attendedRegistration = await Registration.findOne({
-        event: event._id,
+    if (['normal', 'merchandise'].includes(eventWithRuntimeStatus.type)) {
+      const feedbackEligibilityQuery = {
+        event: eventWithRuntimeStatus._id,
         user: req.user._id,
-        type: 'ticket',
         status: 'attended',
-      }).lean();
+      };
 
-      const existingFeedback = await EventFeedback.findOne({ event: event._id, user: req.user._id }).lean();
+      if (eventWithRuntimeStatus.type === 'normal') {
+        feedbackEligibilityQuery.type = 'ticket';
+      } else {
+        feedbackEligibilityQuery.type = 'order';
+        feedbackEligibilityQuery.paymentStatus = 'approved';
+      }
+
+      const attendedRegistration = await Registration.findOne(feedbackEligibilityQuery).lean();
+
+      const existingFeedback = await EventFeedback.findOne({ event: eventWithRuntimeStatus._id, user: req.user._id }).lean();
 
       feedback = {
         canSubmit: !!attendedRegistration && !existingFeedback,
@@ -83,20 +160,19 @@ export const getEventDetail = async (req, res) => {
       };
     }
 
-    return res.json({ event, alreadyRegistered: blocksNewOrder, existingTicket, feedback });
+    return res.json({ event: eventWithRuntimeStatus, alreadyRegistered: blocksNewOrder, existingTicket, feedback });
   } catch (err) {
     console.error('[getEventDetail]', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
 
-// ── POST /participantEvents/:id/feedback ─────────────────────────────────────
 export const submitEventFeedback = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
-    if (event.type !== 'normal') {
-      return res.status(400).json({ message: 'Feedback is available for attended normal events only.' });
+    if (!['normal', 'merchandise'].includes(event.type)) {
+      return res.status(400).json({ message: 'Feedback is available for attended normal or merchandise events only.' });
     }
 
     const { rating, comment = '' } = req.body;
@@ -105,15 +181,27 @@ export const submitEventFeedback = async (req, res) => {
       return res.status(400).json({ message: 'Rating must be an integer between 1 and 5.' });
     }
 
-    const attendedRegistration = await Registration.findOne({
+    const feedbackEligibilityQuery = {
       event: event._id,
       user: req.user._id,
-      type: 'ticket',
       status: 'attended',
-    }).lean();
+    };
+
+    if (event.type === 'normal') {
+      feedbackEligibilityQuery.type = 'ticket';
+    } else {
+      feedbackEligibilityQuery.type = 'order';
+      feedbackEligibilityQuery.paymentStatus = 'approved';
+    }
+
+    const attendedRegistration = await Registration.findOne(feedbackEligibilityQuery).lean();
 
     if (!attendedRegistration) {
-      return res.status(403).json({ message: 'You can submit feedback only after attendance is marked (QR scanned).' });
+      return res.status(403).json({
+        message: event.type === 'merchandise'
+          ? 'You can submit feedback only after your approved order is marked as collected.'
+          : 'You can submit feedback only after attendance is marked (QR scanned).',
+      });
     }
 
     const alreadySubmitted = await EventFeedback.findOne({ event: event._id, user: req.user._id }).lean();
@@ -143,27 +231,38 @@ export const submitEventFeedback = async (req, res) => {
   }
 };
 
-// ── POST /participantEvents/:id/register  (Normal event) ─────────────────────
 export const registerForEvent = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
     if (event.type !== 'normal') return res.status(400).json({ message: 'Use /order for merchandise events.' });
 
-    // Blocking checks
+    const participant = await Participant.findById(req.user._id).select('isIIIT email name').lean();
+    if (!participant) return res.status(404).json({ message: 'Participant not found.' });
+    if (!canParticipantAccessEvent(event, participant)) {
+      return res.status(403).json({ message: 'You are not eligible to register for this event.' });
+    }
+
     if (['closed', 'completed', 'draft'].includes(event.status)) {
       return res.status(400).json({ message: 'Registrations are not open for this event.' });
     }
-    if (new Date(event.registrationDeadline) < new Date()) {
-      return res.status(400).json({ message: 'Registration deadline has passed.' });
+    if (new Date(event.endDate) < new Date()) {
+      return res.status(400).json({ message: 'This event has ended.' });
+    }
+    if (event.registrationStatus === 'closed') {
+      return res.status(400).json({ message: 'Registrations are closed for this event.' });
     }
     if (event.currentRegistrations >= event.registrationLimit) {
       return res.status(400).json({ message: 'Registration limit reached.' });
     }
 
-    // Duplicate check (ignore cancelled registrations)
     const duplicate = await Registration.findOne({ event: event._id, user: req.user._id, status: { $ne: 'cancelled' } });
     if (duplicate) return res.status(400).json({ message: 'You are already registered for this event.' });
+
+    const normalizedFormResponses = normalizeFormResponses(event.formSchema || [], req.body.formResponses || []);
+    if (normalizedFormResponses.error) {
+      return res.status(400).json({ message: normalizedFormResponses.error });
+    }
 
     const ticketId = crypto.randomUUID();
 
@@ -171,16 +270,12 @@ export const registerForEvent = async (req, res) => {
       event: event._id,
       user: req.user._id,
       ticketId,
-      formResponses: req.body.formResponses || [],
+      formResponses: normalizedFormResponses.responses,
     });
 
-    // Increment registration count
     await Event.findByIdAndUpdate(event._id, { $inc: { currentRegistrations: 1 } });
 
     const qrDataUrl = await QRCode.toDataURL(ticketId, { width: 200 });
-
-    // Send email (non-blocking)
-    const participant = await Participant.findById(req.user._id).select('email name').lean();
 
     let message = 'Registered successfully!'
 
@@ -213,19 +308,26 @@ export const registerForEvent = async (req, res) => {
   }
 };
 
-// ── POST /participantEvents/:id/order  (Merchandise event) ───────────────────
 export const orderMerchandise = async (req, res) => {
   try {
     const event = await MerchandiseEvent.findById(req.params.id).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
     if (event.type !== 'merchandise') return res.status(400).json({ message: 'Use /register for normal events.' });
 
-    // Blocking checks
+    const participant = await Participant.findById(req.user._id).select('isIIIT').lean();
+    if (!participant) return res.status(404).json({ message: 'Participant not found.' });
+    if (!canParticipantAccessEvent(event, participant)) {
+      return res.status(403).json({ message: 'You are not eligible to register for this event.' });
+    }
+
     if (['closed', 'completed', 'draft'].includes(event.status)) {
       return res.status(400).json({ message: 'Purchases are not open for this item.' });
     }
-    if (new Date(event.registrationDeadline) < new Date()) {
-      return res.status(400).json({ message: 'Purchase deadline has passed.' });
+    if (new Date(event.endDate) < new Date()) {
+      return res.status(400).json({ message: 'This event has ended.' });
+    }
+    if (event.registrationStatus === 'closed') {
+      return res.status(400).json({ message: 'Purchases are closed for this item.' });
     }
     if (event.stock <= 0) {
       return res.status(400).json({ message: 'This item is out of stock.' });
@@ -233,7 +335,11 @@ export const orderMerchandise = async (req, res) => {
 
     const { quantity = 1, selectedVariants = {}, formResponses = [] } = req.body;
 
-    // Per-user limit – exclude rejected orders so rejected users can retry
+    const normalizedFormResponses = normalizeFormResponses(event.formSchema || [], formResponses);
+    if (normalizedFormResponses.error) {
+      return res.status(400).json({ message: normalizedFormResponses.error });
+    }
+
     const userOrders = await MerchandiseOrder.countDocuments({
       event: event._id,
       user: req.user._id,
@@ -252,7 +358,7 @@ export const orderMerchandise = async (req, res) => {
       ticketId,
       quantity,
       selectedVariants,
-      formResponses,
+      formResponses: normalizedFormResponses.responses,
       totalPrice,
       status: 'pending',
       paymentStatus: 'pending_approval',
@@ -272,7 +378,6 @@ export const orderMerchandise = async (req, res) => {
   }
 };
 
-// ── PUT /participantEvents/:id/payment-proof ──────────────────────────────────
 export const uploadPaymentProof = async (req, res) => {
   try {
     const { paymentProofDataUrl, paymentProofUrl } = req.body;
@@ -325,13 +430,11 @@ export const uploadPaymentProof = async (req, res) => {
   }
 };
 
-// ── DELETE /participantEvents/:id/unregister ──────────────────────────────────
 export const unregisterFromEvent = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
 
-    // Only allow unregister for published events (before they start)
     if (['ongoing', 'completed', 'closed'].includes(event.status)) {
       return res.status(400).json({ message: 'You cannot unregister from an event that is ongoing, completed, or closed.' });
     }
@@ -344,7 +447,6 @@ export const unregisterFromEvent = async (req, res) => {
     registration.status = 'cancelled';
     await registration.save();
 
-    // Decrement registration count
     await Event.findByIdAndUpdate(event._id, { $inc: { currentRegistrations: -1 } });
 
     return res.json({ message: 'Successfully unregistered from the event.' });

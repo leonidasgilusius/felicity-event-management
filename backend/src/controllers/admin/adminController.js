@@ -1,6 +1,10 @@
 import Organizer from '../../models/user/Organizer.js';
-import User from '../../models/user/User.js';
 import PasswordResetRequest from '../../models/PasswordResetRequest.js';
+import Event from '../../models/event/Event.js';
+import Registration from '../../models/Registration.js';
+import ForumMessage from '../../models/ForumMessage.js';
+import EventFeedback from '../../models/EventFeedback.js';
+import AttendanceAudit from '../../models/AttendanceAudit.js';
 
 function generateRandomPassword(length = 10) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
@@ -30,7 +34,7 @@ export async function createOrganizer(req, res) {
     }
 
     const regex = /^club-(\d+)@iiit\.ac\.in$/i;
-    const existing = await User.find({ email: { $regex: '^club-\\d+@iiit\\.ac\\.in$' } }).select('email');
+    const existing = await Organizer.find({ email: { $regex: '^club-\\d+@iiit\\.ac\\.in$' } }).select('email');
 
     let maxIndex = 0;
     for (const u of existing) {
@@ -66,7 +70,7 @@ export async function createOrganizer(req, res) {
 export async function toggleDisableOrganizer(req, res) {
   try {
     const { id } = req.params;
-    const organizer = await User.findOne({ _id: id, role: 'Organizer' });
+    const organizer = await Organizer.findById(id);
     if (!organizer) return res.status(404).json({ message: 'Organizer not found' });
 
     organizer.isDisabled = !organizer.isDisabled;
@@ -82,7 +86,7 @@ export async function toggleDisableOrganizer(req, res) {
 export async function archiveOrganizer(req, res) {
   try {
     const { id } = req.params;
-    const organizer = await User.findOne({ _id: id, role: 'Organizer' });
+    const organizer = await Organizer.findById(id);
     if (!organizer) return res.status(404).json({ message: 'Organizer not found' });
 
     organizer.archived = true;
@@ -98,12 +102,29 @@ export async function archiveOrganizer(req, res) {
 export async function deleteOrganizer(req, res) {
   try {
     const { id } = req.params;
-    const organizer = await User.findOne({ _id: id, role: 'Organizer' });
+    const organizer = await Organizer.findById(id);
     if (!organizer) return res.status(404).json({ message: 'Organizer not found' });
 
-    await User.deleteOne({ _id: id });
+    const organizerEvents = await Event.find({ organizer: id }).select('_id').lean();
+    const eventIds = organizerEvents.map((event) => event._id);
 
-    return res.status(200).json({ message: 'Organizer deleted permanently' });
+    if (eventIds.length > 0) {
+      await Promise.all([
+        AttendanceAudit.deleteMany({ event: { $in: eventIds } }),
+        EventFeedback.deleteMany({ event: { $in: eventIds } }),
+        ForumMessage.deleteMany({ event: { $in: eventIds } }),
+        Registration.deleteMany({ event: { $in: eventIds } }),
+      ]);
+
+      await Event.deleteMany({ _id: { $in: eventIds } });
+    }
+
+    await Organizer.deleteOne({ _id: id });
+
+    return res.status(200).json({
+      message: 'Organizer deleted permanently',
+      deletedEvents: eventIds.length,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error while deleting organizer.' });
@@ -136,7 +157,7 @@ export async function approvePasswordResetRequest(req, res) {
       return res.status(400).json({ message: `Request is already ${request.status}.` });
     }
 
-    const organizer = await User.findOne({ _id: request.organizer._id, role: 'Organizer' });
+    const organizer = await Organizer.findById(request.organizer._id);
     if (!organizer) {
       return res.status(404).json({ message: 'Organizer account not found.' });
     }

@@ -1,7 +1,37 @@
 import { useState } from 'react';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
-import { createOrganizerDraftEvent, updateOrganizerEventFormSchema, publishOrganizerEvent } from '../../utils/api';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
+import { createOrganizerDraftEvent, updateOrganizerEventFormSchema, publishOrganizerEvent, getErrorMessage } from '../../utils/api';
 import '../../styles/Dashboard.css';
+
+const EVENT_CATEGORIES = ['Technology', 'Music', 'Sports', 'Art', 'Science', 'Literature', 'Gaming', 'Film', 'Dance', 'Food'];
+const ELIGIBILITY_OPTIONS = [
+    { value: 'All', label: 'All' },
+    { value: 'IIIT', label: 'IIIT Only' },
+];
+
+const validateTimeline = ({ startDate, endDate, registrationDeadline }) => {
+    const parsedStartDate = new Date(startDate);
+    const parsedEndDate = new Date(endDate);
+    const parsedRegistrationDeadline = new Date(registrationDeadline);
+
+    if (
+        Number.isNaN(parsedStartDate.getTime()) ||
+        Number.isNaN(parsedEndDate.getTime()) ||
+        Number.isNaN(parsedRegistrationDeadline.getTime())
+    ) {
+        return 'Please enter valid event dates.';
+    }
+
+    if (parsedEndDate <= parsedStartDate) {
+        return 'End date must be after start date.';
+    }
+
+    if (parsedRegistrationDeadline >= parsedEndDate) {
+        return 'Registration deadline must be before end date.';
+    }
+
+    return null;
+};
 
 const CreateEvent = () => {
     const getTodayAtMidnight = () => {
@@ -26,7 +56,7 @@ const CreateEvent = () => {
         registrationLimit: 100,
         registrationFee: 0,
         eligibility: 'All',
-        eventTags: '',
+        eventTags: [],
         location: '',
         stock: 50,
         maxPerUser: 1,
@@ -51,19 +81,40 @@ const CreateEvent = () => {
         setDraftForm((previous) => ({ ...previous, [name]: value }));
     };
 
+    const toggleCategory = (category) => {
+        setDraftForm((previous) => ({
+            ...previous,
+            eventTags: previous.eventTags.includes(category)
+                ? previous.eventTags.filter((item) => item !== category)
+                : [...previous.eventTags, category],
+        }));
+    };
+
     const handleCreateDraft = async (event) => {
         event.preventDefault();
         setCreateFlowMessage('');
+
+        if (!Array.isArray(draftForm.eventTags) || draftForm.eventTags.length === 0) {
+            setCreateFlowMessage('Select at least one event category.');
+            return;
+        }
+
+        const timelineError = validateTimeline({
+            startDate: draftForm.startDate,
+            endDate: draftForm.endDate,
+            registrationDeadline: draftForm.registrationDeadline,
+        });
+        if (timelineError) {
+            setCreateFlowMessage(timelineError);
+            return;
+        }
 
         try {
         const payload = {
             ...draftForm,
             registrationLimit: Number(draftForm.registrationLimit),
             registrationFee: Number(draftForm.registrationFee),
-            eventTags: draftForm.eventTags
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter(Boolean),
+            eventTags: draftForm.eventTags,
         };
 
         if (draftForm.eventType === 'merchandise') {
@@ -84,7 +135,7 @@ const CreateEvent = () => {
         setCreateFlowMessage('Draft created. Define required fields next.');
         setFormFields([]);
         } catch (createError) {
-        setCreateFlowMessage(createError.response?.data?.message || 'Failed to create draft event.');
+        setCreateFlowMessage(getErrorMessage(createError, 'Failed to create draft event.'));
         }
     };
 
@@ -128,7 +179,7 @@ const CreateEvent = () => {
         await updateOrganizerEventFormSchema(draftEvent._id, formFields);
         setCreateFlowMessage('Required fields saved. You can publish now.');
         } catch (saveError) {
-        setCreateFlowMessage(saveError.response?.data?.message || 'Failed to save form fields.');
+        setCreateFlowMessage(getErrorMessage(saveError, 'Failed to save form fields.'));
         }
     };
 
@@ -154,7 +205,7 @@ const CreateEvent = () => {
             required: false
         });
         } catch (publishError) {
-        setCreateFlowMessage(publishError.response?.data?.message || 'Failed to publish event.');
+        setCreateFlowMessage(getErrorMessage(publishError, 'Failed to publish event.'));
         }
     };
 
@@ -228,13 +279,18 @@ const CreateEvent = () => {
                 />
 
                 <label>Eligibility</label>
-                <input
+                <select
                     name="eligibility"
-                    placeholder="e.g. All, UG1, etc."
                     value={draftForm.eligibility}
                     onChange={onDraftInputChange}
                     required
-                />
+                >
+                    {ELIGIBILITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                            {option.label}
+                        </option>
+                    ))}
+                </select>
 
                 {draftForm.eventType === 'normal' && (
                     <>
@@ -307,13 +363,19 @@ const CreateEvent = () => {
                     </>
                 )}
 
-                <label>Tags <span style={{ fontWeight: 400, color: '#888' }}>(comma-separated)</span></label>
-                <input
-                    name="eventTags"
-                    placeholder="e.g. tech, workshop, music"
-                    value={draftForm.eventTags}
-                    onChange={onDraftInputChange}
-                />
+                <label>Event Categories</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
+                    {EVENT_CATEGORIES.map((category) => (
+                        <label key={category} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                                type="checkbox"
+                                checked={draftForm.eventTags.includes(category)}
+                                onChange={() => toggleCategory(category)}
+                            />
+                            <span>{category}</span>
+                        </label>
+                    ))}
+                </div>
 
                 <button type="submit" className="card-button" disabled={!!draftEvent} style={{ marginTop: 8 }}>
                     {draftEvent ? '✓ Draft Created' : 'Create Draft'}
@@ -342,7 +404,6 @@ const CreateEvent = () => {
                             onChange={(e) => setNewField({ ...newField, fieldType: e.target.value })}
                         >
                             <option value="text">Text</option>
-                            <option value="textarea">Long Text</option>
                             <option value="number">Number</option>
                             <option value="dropdown">Dropdown</option>
                             <option value="checkbox">Checkbox</option>

@@ -31,7 +31,6 @@
   background: #667eea; color: white;
 }
 
-/* Detail page */
 .org-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .org-detail-header h2 { margin: 0 0 6px; }
 .org-email { color: #667eea; font-size: 13px; margin: 6px 0 0; }

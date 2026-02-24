@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
 import { getOrganizerDashboardData } from '../../utils/api';
 import '../../styles/Dashboard.css';
 

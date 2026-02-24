@@ -1,9 +1,10 @@
-import AdminSidebar from '../../components/AdminSidebar';
+import AdminSidebar from '../../components/Admin/AdminSidebar';
 import { useEffect, useMemo, useState } from 'react';
 import {
   adminListPasswordResetRequests,
   adminApprovePasswordResetRequest,
   adminRejectPasswordResetRequest,
+    getErrorMessage,
 } from '../../utils/api';
 import '../../styles/Dashboard.css';
 
@@ -23,7 +24,7 @@ const PasswordReset = () => {
             const data = await adminListPasswordResetRequests();
             setRequests(data.requests || []);
         } catch (e) {
-            setError(e || 'Failed to load password reset requests.');
+            setError(getErrorMessage(e, 'Failed to load password reset requests.'));
         } finally {
             setLoading(false);
         }
@@ -45,7 +46,7 @@ const PasswordReset = () => {
             });
             await loadRequests();
         } catch (e) {
-            setError(e || 'Failed to approve request.');
+            setError(getErrorMessage(e, 'Failed to approve request.'));
         } finally {
             setWorkingId(null);
         }
@@ -57,7 +58,7 @@ const PasswordReset = () => {
             await adminRejectPasswordResetRequest(requestId, commentDraft[requestId] || '');
             await loadRequests();
         } catch (e) {
-            setError(e || 'Failed to reject request.');
+            setError(getErrorMessage(e, 'Failed to reject request.'));
         } finally {
             setWorkingId(null);
         }

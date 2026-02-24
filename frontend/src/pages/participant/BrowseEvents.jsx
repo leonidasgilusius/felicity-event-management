@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ParticipantSidebar from '../../components/ParticipantSidebar';
+import ParticipantSidebar from '../../components/Participant/ParticipantSidebar';
 import { getBrowseEvents } from '../../utils/participantApi';
+import { getErrorMessage } from '../../utils/api';
 import '../../styles/Dashboard.css';
 import '../../styles/BrowseEvents.css';
 
@@ -23,10 +24,15 @@ function fuzzyScore(needle, haystack) {
 }
 
 const EVENT_TYPES = ['all', 'normal', 'merchandise'];
-const ELIGIBILITIES = ['All', 'IIIT Students', 'Open'];
+const ELIGIBILITIES = [
+  { value: 'All', label: 'All' },
+  { value: 'IIIT', label: 'IIIT Only' },
+];
 const FILTER_TABS = [
   { value: 'all', label: 'All Events' },
+  { value: 'open', label: 'Open' },
   { value: 'followed', label: 'Followed Clubs' },
+  { value: 'interests', label: 'My Interests' },
 ];
 
 const BrowseEvents = () => {
@@ -58,7 +64,7 @@ const BrowseEvents = () => {
       setAllEvents(data.events || []);
       setTrending(data.trending || []);
     } catch (err) {
-      setError(err || 'Failed to load events.');
+      setError(getErrorMessage(err, 'Failed to load events.'));
     } finally {
       setLoading(false);
     }
@@ -85,29 +91,48 @@ const BrowseEvents = () => {
     dateStr ? new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
   const registrationLabel = (event) => {
-    if (event.status === 'closed') return { text: 'Registrations Closed', cls: 'badge-closed' };
-    if (event.status === 'ongoing') return { text: 'Ongoing', cls: 'badge-ongoing' };
+    const now = Date.now();
+    const startMs = new Date(event.startDate).getTime();
+    const endMs = new Date(event.endDate).getTime();
+
+    const isEnded = event.status === 'closed' || event.status === 'completed' || (Number.isFinite(endMs) && now > endMs);
+    if (isEnded) return { text: 'Ended', cls: 'badge-closed' };
+
+    const isRegistrationClosed = event.registrationStatus === 'closed';
+
+    if (isRegistrationClosed) {
+      return { text: 'Registration Ended', cls: 'badge-closed' };
+    }
+
+    const registrationEndedByLimit = event.type === 'normal'
+      ? event.currentRegistrations >= event.registrationLimit
+      : event.stock <= 0;
+
+    if (registrationEndedByLimit) {
+      return { text: 'Registration Ended', cls: 'badge-closed' };
+    }
+
+    const isOngoing = Number.isFinite(startMs) && Number.isFinite(endMs) && now >= startMs && now <= endMs;
+    if (isOngoing) return { text: 'Ongoing', cls: 'badge-ongoing' };
+
     const deadline = new Date(event.registrationDeadline);
     const daysLeft = Math.ceil((deadline - Date.now()) / (1000 * 60 * 60 * 24));
     if (daysLeft <= 3) return { text: `${daysLeft}d left`, cls: 'badge-urgent' };
     return { text: `Open — ${fmt(event.registrationDeadline)}`, cls: 'badge-open' };
   };
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="dashboard-container">
       <ParticipantSidebar />
 
       <div className="dashboard-content browse-events-content">
-        {/* ── Page header ─── */}
         <div className="welcome-section">
           <h2>Browse Events</h2>
-          <p style={{ color: '#666', marginTop: 4 }}>
+          <p className="browse-subtitle">
             Discover upcoming events — even if registrations are closed.
           </p>
         </div>
 
-        {/* ── Trending strip ─── */}
         {trending.length > 0 && (
           <section className="browse-trending-section">
             <h3 className="browse-section-title">Trending (last 24 h)</h3>
@@ -123,9 +148,7 @@ const BrowseEvents = () => {
           </section>
         )}
 
-        {/* ── Controls ─── */}
         <div className="browse-controls">
-          {/* Search */}
           <div className="browse-search-row">
             <input
               type="text"
@@ -136,7 +159,6 @@ const BrowseEvents = () => {
             />
           </div>
 
-          {/* Filter tabs */}
           <div className="browse-filter-tabs">
             {FILTER_TABS.map((tab) => (
               <button
@@ -149,7 +171,6 @@ const BrowseEvents = () => {
             ))}
           </div>
 
-          {/* Row of dropdowns + date range */}
           <div className="browse-filter-row">
             <select
               className="browse-select"
@@ -169,9 +190,9 @@ const BrowseEvents = () => {
               onChange={(e) => setEligibilityFilter(e.target.value)}
             >
               <option value="">All Eligibilities</option>
-              {ELIGIBILITIES.map((e) => (
-                <option key={e} value={e}>
-                  {e}
+              {ELIGIBILITIES.map((eligibility) => (
+                <option key={eligibility.value} value={eligibility.value}>
+                  {eligibility.label}
                 </option>
               ))}
             </select>
@@ -212,7 +233,6 @@ const BrowseEvents = () => {
           </div>
         </div>
 
-        {/* ── Results ─── */}
         {loading ? (
           <p className="browse-status">Loading events…</p>
         ) : error ? (
@@ -224,7 +244,7 @@ const BrowseEvents = () => {
             {displayedEvents.map((event) => {
               const reg = registrationLabel(event);
               return (
-                <div key={event._id} className="browse-event-card" style={{ cursor: 'pointer' }} onClick={() => navigate(`/participant/events/${event._id}`)}>
+                <div key={event._id} className="browse-event-card" onClick={() => navigate(`/participant/events/${event._id}`)}>
                   {event.image && (
                     <img src={event.image} alt={event.title} className="browse-event-img" />
                   )}
@@ -240,18 +260,18 @@ const BrowseEvents = () => {
                       )}
                     </p>
                     <p className="browse-event-desc">{event.description}</p>
-                    <div className="browse-event-meta">
-                      <span>📅 {fmt(event.startDate)} – {fmt(event.endDate)}</span>
-                      <span>👥 {event.eligibility}</span>
+                    <div className="browse-event-meta-entry">
+                      <p className="browse-event-meta-entry">{fmt(event.startDate)} - {fmt(event.endDate)}</p>
+                      <p className="browse-event-meta-entry">Eligibility: {event.eligibility}</p>
                       {event.registrationFee > 0 && (
-                        <span>₹{event.registrationFee}</span>
+                        <p className="browse-event-meta-entry">₹{event.registrationFee}</p>
                       )}
                       {event.eventTags?.length > 0 && (
                         <div className="browse-tags">
                           {event.eventTags.map((tag) => (
-                            <span key={tag} className="browse-tag">
+                            <p key={tag} className="browse-tag">
                               {tag}
-                            </span>
+                            </p>
                           ))}
                         </div>
                       )}

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getOrganizerDashboardData } from '../../utils/api';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
+import { getOrganizerDashboardData, getErrorMessage } from '../../utils/api';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
 import '../../styles/Dashboard.css';
 
 const OrganizerDashboard = () => {
@@ -34,7 +34,7 @@ const OrganizerDashboard = () => {
                 setSelectedEventId(data.events[0]._id);
             }
         } catch (fetchError) {
-            setError(fetchError.response?.data?.message || 'Failed to load organizer dashboard.');
+            setError(getErrorMessage(fetchError, 'Failed to load organizer dashboard.'));
         } finally {
             setLoading(false);
         }
@@ -75,14 +75,25 @@ const OrganizerDashboard = () => {
                             ) : (
                                 <div className="organizer-carousel">
                                     {dashboardData.events.map((event) => (
-                                        <div key={event._id} className="organizer-event-card">
+                                        <div
+                                            key={event._id}
+                                            className="organizer-event-card"
+                                            onClick={() => setSelectedEventId(event._id)}
+                                            style={{
+                                                cursor: 'pointer',
+                                                border: selectedEventId === event._id ? '2px solid #1a73e8' : undefined,
+                                            }}
+                                        >
                                             <h4>{event.name}</h4>
                                             <p>Type: {event.type}</p>
                                             <p>Status: {event.status}</p>
                                             <button
                                                 type="button"
                                                 className={`card-button ${selectedEventId === event._id ? 'active' : ''}`}
-                                                onClick={() => navigate(`/organizer/events/${event._id}`)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigate(`/organizer/events/${event._id}`);
+                                                }}
                                             >
                                                 View Details
                                             </button>
@@ -98,7 +109,7 @@ const OrganizerDashboard = () => {
                         </section>
 
                         <section className="info-section participant-section">
-                            <h3>Total Event Analytics (Completed Events)</h3>
+                            <h3>Total Event Analytics (Closed/Completed Events)</h3>
                             {renderAnalytics(dashboardData.totalEventAnalytics)}
                         </section>
                     </>

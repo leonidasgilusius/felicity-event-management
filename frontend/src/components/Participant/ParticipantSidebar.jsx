@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 const ParticipantSidebar = () => {
   const { logout } = useAuth();
@@ -27,11 +27,6 @@ const ParticipantSidebar = () => {
         <li>
           <NavLink to="/participant/organizers" className={({ isActive }) => `participant-nav-button ${isActive ? 'active' : ''}`}>
             Organizers
-          </NavLink>
-        </li>
-        <li>
-          <NavLink to="/participant/history" className={({ isActive }) => `participant-nav-button ${isActive ? 'active' : ''}`}>
-            History
           </NavLink>
         </li>
         <li>

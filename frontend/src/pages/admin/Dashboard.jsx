@@ -1,5 +1,5 @@
 import { useAuth } from '../../context/AuthContext';
-import AdminSidebar from '../../components/AdminSidebar';
+import AdminSidebar from '../../components/Admin/AdminSidebar';
 import '../../styles/Dashboard.css';
 
 const AdminDashboard = () => {

@@ -1,7 +1,7 @@
 import Event from '../../models/event/Event.js';
 import User from '../../models/user/User.js';
-import { Registration } from '../../models/Registration.js';
 import ForumMessage from '../../models/ForumMessage.js';
+import Registration from '../../models/Registration.js';
 
 function roleOf(req) {
   return String(req.user?.role || '').toLowerCase();
@@ -13,12 +13,13 @@ async function isOrganizerOfEvent(userId, eventId) {
 }
 
 async function isRegisteredParticipant(userId, eventId) {
-  const existing = await Registration.exists({
+  const registration = await Registration.findOne({
     event: eventId,
     user: userId,
     status: { $ne: 'cancelled' },
-  });
-  return !!existing;
+  }).lean();
+
+  return !!registration;
 }
 
 function formatMessage(message, currentUserId) {
@@ -88,6 +89,14 @@ export async function getForumMessages(req, res) {
     const event = await Event.findById(eventId).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
 
+    const role = roleOf(req);
+    const isOrganizer = role === 'organizer' && (await isOrganizerOfEvent(req.user._id, eventId));
+    const isParticipant = role === 'participant' && (await isRegisteredParticipant(req.user._id, eventId));
+
+    if (!isOrganizer && !isParticipant) {
+      return res.status(403).json({ message: 'Only the event organizer or registered participants can access this forum.' });
+    }
+
     const messages = await ForumMessage.find({ event: eventId })
       .populate('author', 'name role')
       .sort({ createdAt: 1 })
@@ -120,7 +129,7 @@ export async function createForumMessage(req, res) {
     const isParticipant = role === 'participant' && (await isRegisteredParticipant(req.user._id, eventId));
 
     if (!isOrganizer && !isParticipant) {
-      return res.status(403).json({ message: 'Only the organizer or registered participants can post in this forum.' });
+      return res.status(403).json({ message: 'Only the event organizer or registered participants can post in this forum.' });
     }
 
     if (parentMessageId) {
@@ -164,7 +173,7 @@ export async function toggleForumReaction(req, res) {
     const isParticipant = role === 'participant' && (await isRegisteredParticipant(req.user._id, message.event));
 
     if (!isOrganizer && !isParticipant) {
-      return res.status(403).json({ message: 'Only the organizer or registered participants can react.' });
+      return res.status(403).json({ message: 'Only the event organizer or registered participants can react.' });
     }
 
     let reaction = message.reactions.find((entry) => entry.emoji === emoji);

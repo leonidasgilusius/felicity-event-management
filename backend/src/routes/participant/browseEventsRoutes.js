@@ -3,7 +3,6 @@ import { browseEvents } from '../../controllers/participant/browseEventsControll
 
 const router = express.Router();
 
-// GET /browseEvents  – full filter + search + trending
 router.get('/', browseEvents);
 
 export default router;

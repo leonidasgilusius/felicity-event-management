@@ -1,12 +1,14 @@
 import express from 'express';
 import {
   createDraftEvent,
+  deleteDraftEvent,
   getOrganizerDashboard,
   publishEvent,
   updateEventFormSchema,
   getOrganizerEventDetail,
   updateOrganizerEvent,
   changeEventStatus,
+  closeEventRegistration,
   getAttendanceOverview,
   scanAttendanceTicket,
   manualMarkAttendance,
@@ -21,7 +23,7 @@ const router = express.Router();
 
 router.get('/dashboard', getOrganizerDashboard);
 router.post('/draft', createDraftEvent);
-// Order management (before /:eventId to avoid conflict)
+
 router.get('/orders/:orderId/proof', getOrderProof);
 router.patch('/orders/:orderId/approve', approveOrder);
 router.patch('/orders/:orderId/reject', rejectOrder);
@@ -32,8 +34,10 @@ router.get('/:eventId/feedback', getEventFeedbackOverview);
 router.get('/:eventId', getOrganizerEventDetail);
 router.patch('/:eventId/form-schema', updateEventFormSchema);
 router.patch('/:eventId/publish', publishEvent);
+router.delete('/:eventId/draft', deleteDraftEvent);
 router.patch('/:eventId/edit', updateOrganizerEvent);
 router.patch('/:eventId/status', changeEventStatus);
+router.patch('/:eventId/registration/close', closeEventRegistration);
 router.get('/:eventId/orders', getEventOrders);
 
 export default router;

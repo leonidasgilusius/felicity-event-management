@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
 import {
   getAttendanceOverview,
   scanAttendanceTicket,
   manualMarkAttendance,
+  getErrorMessage,
 } from '../../utils/api';
 import '../../styles/Dashboard.css';
 
 const fmt = (d) => (d ? new Date(d).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
 function exportAttendanceCSV(rows, eventTitle) {
-  const header = ['Name', 'Email', 'Ticket ID', 'Attendance Status', 'Check-In Time'];
+  const header = ['Name', 'Email', 'Ticket ID', 'Attendance Status', 'Check-In Time', 'Quantity', 'Variants'];
   const data = rows.map((row) => [
     `"${row.name}"`,
     `"${row.email}"`,
     row.ticketId,
     row.scanned ? 'Present' : 'Absent',
     row.checkInTime ? fmt(row.checkInTime) : '',
+    row.quantity ?? '',
+    `"${Object.entries(row.selectedVariants || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}"`,
   ]);
 
   const csv = [header, ...data].map((r) => r.join(',')).join('\n');
@@ -66,7 +69,7 @@ export default function AttendancePage() {
       setStats(data.stats);
       setParticipants(data.participants || []);
     } catch (e) {
-      setError(e || 'Failed to load attendance data.');
+      setError(getErrorMessage(e, 'Failed to load attendance data.'));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -94,7 +97,7 @@ export default function AttendancePage() {
     setParticipants((prev) =>
       prev.map((row) =>
         String(row.registrationId) === String(updated.registrationId)
-          ? { ...row, scanned: true, status: 'attended', checkInTime: updated.checkInTime }
+          ? { ...row, ...updated, scanned: true, status: 'attended', checkInTime: updated.checkInTime }
           : row
       )
     );
@@ -121,7 +124,7 @@ export default function AttendancePage() {
       setScanMessage(`Checked in: ${result.participant.name}`);
       setScanInput('');
     } catch (e) {
-      setScanError(e || 'Failed to scan ticket.');
+      setScanError(getErrorMessage(e, 'Failed to scan ticket.'));
     } finally {
       setScanBusy(false);
     }
@@ -185,7 +188,10 @@ export default function AttendancePage() {
         !text ||
         row.name.toLowerCase().includes(text) ||
         row.email.toLowerCase().includes(text) ||
-        row.ticketId.toLowerCase().includes(text);
+        row.ticketId.toLowerCase().includes(text) ||
+        Object.entries(row.selectedVariants || {}).some(([key, value]) =>
+          `${key} ${value}`.toLowerCase().includes(text)
+        );
       const matchesStatus =
         statusFilter === 'all' ||
         (statusFilter === 'present' && row.scanned) ||
@@ -203,7 +209,7 @@ export default function AttendancePage() {
       applyParticipantUpdate(result.participant);
       setScanMessage(result.message);
     } catch (e) {
-      setScanError(e || 'Manual override failed.');
+      setScanError(getErrorMessage(e, 'Manual override failed.'));
     } finally {
       setManualBusyId(null);
     }
@@ -225,7 +231,7 @@ export default function AttendancePage() {
         <button className="oed-back-btn" onClick={() => navigate(-1)}>← Back</button>
 
         <section className="info-section participant-section" style={{ marginBottom: 16 }}>
-          <h3>Attendance Tracking</h3>
+          <h3>{event?.type === 'merchandise' ? 'Pickup Attendance Tracking' : 'Attendance Tracking'}</h3>
           <p style={{ marginTop: 6, color: '#666' }}>{event?.title}</p>
           {error && <p className="error-message">{error}</p>}
 
@@ -283,9 +289,9 @@ export default function AttendancePage() {
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <input
+              <input
               className="search-input"
-              placeholder="Search name, email, ticket ID"
+                placeholder="Search name, email, ticket ID, variant"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ maxWidth: 320 }}
@@ -297,10 +303,10 @@ export default function AttendancePage() {
             </select>
             <input
               className="search-input"
-              placeholder="Manual override note (optional)"
+              placeholder="Override note (optional)"
               value={manualNote}
               onChange={(e) => setManualNote(e.target.value)}
-              style={{ maxWidth: 320 }}
+              style={{ maxWidth: 380 }}
             />
           </div>
 
@@ -311,6 +317,8 @@ export default function AttendancePage() {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Ticket ID</th>
+                  {event?.type === 'merchandise' && <th>Qty</th>}
+                  {event?.type === 'merchandise' && <th>Variants</th>}
                   <th>Status</th>
                   <th>Timestamp</th>
                   <th>Manual Override</th>
@@ -318,13 +326,17 @@ export default function AttendancePage() {
               </thead>
               <tbody>
                 {visibleRows.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: '#777' }}>No participants found.</td></tr>
+                  <tr><td colSpan={event?.type === 'merchandise' ? 8 : 6} style={{ textAlign: 'center', color: '#777' }}>No participants found.</td></tr>
                 ) : (
                   visibleRows.map((row) => (
                     <tr key={row.registrationId}>
                       <td>{row.name}</td>
                       <td>{row.email}</td>
                       <td>{row.ticketId}</td>
+                      {event?.type === 'merchandise' && <td>{row.quantity ?? '—'}</td>}
+                      {event?.type === 'merchandise' && (
+                        <td>{Object.entries(row.selectedVariants || {}).map(([key, value]) => `${key}: ${value}`).join(', ') || '—'}</td>
+                      )}
                       <td>{row.scanned ? 'Present' : 'Absent'}</td>
                       <td>{fmt(row.checkInTime)}</td>
                       <td>

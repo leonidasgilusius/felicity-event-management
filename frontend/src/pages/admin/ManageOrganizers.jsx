@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import AdminSidebar from '../../components/AdminSidebar';
+import AdminSidebar from '../../components/Admin/AdminSidebar';
 import '../../styles/Dashboard.css';
 import {
   adminListOrganizers,
@@ -61,6 +61,9 @@ const ManageOrganizers = () => {
   };
 
   const archive = async (id) => {
+    const confirmed = window.confirm('Archive this organizer account? This action is irreversible.');
+    if (!confirmed) return;
+
     try {
       await adminArchiveOrganizer(id);
       await loadOrganizers();
@@ -70,6 +73,9 @@ const ManageOrganizers = () => {
   };
 
   const remove = async (id) => {
+    const confirmed = window.confirm('Delete this organizer account permanently? This action is irreversible and will remove related data.');
+    if (!confirmed) return;
+
     try {
       await adminDeleteOrganizer(id);
       await loadOrganizers();

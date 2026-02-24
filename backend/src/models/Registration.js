@@ -17,7 +17,7 @@ const RegistrationSchema = new mongoose.Schema({
     ref: 'User', 
     required: true 
   },
-  ticketId: { type: String, unique: true, required: true }, // Unique QR String
+  ticketId: { type: String, unique: true, required: true }, 
   status: {
     type: String,
     enum: ['pending', 'confirmed', 'cancelled', 'attended', 'shipped'],
@@ -27,7 +27,6 @@ const RegistrationSchema = new mongoose.Schema({
 
 const Registration = mongoose.model('Registration', RegistrationSchema);
 
-// --- 2. Discriminators ---
 
 
 const TicketRegistration = Registration.discriminator('ticket', new mongoose.Schema({

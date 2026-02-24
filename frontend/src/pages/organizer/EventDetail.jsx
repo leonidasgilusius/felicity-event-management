@@ -1,14 +1,17 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
 import EventForum from '../../components/EventForum';
 import {
   getOrganizerEventDetail,
   getOrganizerEventFeedback,
   updateOrganizerEvent,
   changeOrganizerEventStatus,
+  closeOrganizerEventRegistration,
   updateOrganizerEventFormSchema,
   publishOrganizerEvent,
+  deleteOrganizerDraftEvent,
+  getErrorMessage,
 } from '../../utils/api';
 import '../../styles/Dashboard.css';
 import '../../styles/OrganizerEventDetail.css';
@@ -18,13 +21,17 @@ const STATUS_COLORS = {
   completed: '#8e44ad', closed: '#888',
 };
 
+const EVENT_CATEGORIES = ['Technology', 'Music', 'Sports', 'Art', 'Science', 'Literature', 'Gaming', 'Film', 'Dance', 'Food'];
+const ELIGIBILITY_OPTIONS = ['All', 'IIIT'];
+
 const fmt = (d) =>
   d ? new Date(d).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—';
 
-// ── CSV export ─────────────────────────────────────────────────────────────────
+const toDateTimeLocal = (d) => (d ? new Date(d).toISOString().slice(0, 16) : '');
+
 function exportCSV(participants, eventTitle) {
   const header = ['Name', 'Email', 'Registered On', 'Status', 'Payment', 'Ticket ID'];
   const rows = participants.map((p) => [
@@ -53,14 +60,12 @@ const OrganizerEventDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Edit form
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editMsg, setEditMsg] = useState('');
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Form schema editor
   const [formFields, setFormFields] = useState([]);
   const [newField, setNewField] = useState({
     label: '',
@@ -73,15 +78,12 @@ const OrganizerEventDetail = () => {
   const [savingForm, setSavingForm] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
-  // Status change
   const [statusMsg, setStatusMsg] = useState('');
   const [statusError, setStatusError] = useState('');
 
-  // Participants table filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Feedback analytics
   const [feedbackStats, setFeedbackStats] = useState({ total: 0, averageRating: 0, ratingBreakdown: [] });
   const [feedbackList, setFeedbackList] = useState([]);
   const [feedbackFilter, setFeedbackFilter] = useState('all');
@@ -94,11 +96,25 @@ const OrganizerEventDetail = () => {
       .then((d) => {
         setData(d);
         setEditForm({
+          title: d.event.title || '',
           description: d.event.description || '',
-          registrationDeadline: d.event.registrationDeadline
-            ? new Date(d.event.registrationDeadline).toISOString().slice(0, 16)
-            : '',
+          eligibility: d.event.eligibility || 'All',
+          registrationDeadline: toDateTimeLocal(d.event.registrationDeadline),
           registrationLimit: d.event.registrationLimit || '',
+          registrationFee: d.event.registrationFee ?? 0,
+          startDate: toDateTimeLocal(d.event.startDate),
+          endDate: toDateTimeLocal(d.event.endDate),
+          eventTags: Array.isArray(d.event.eventTags) ? d.event.eventTags : [],
+          location: d.event.location || '',
+          stock: d.event.stock ?? '',
+          maxPerUser: d.event.maxPerUser ?? 1,
+          paymentDetails: d.event.paymentDetails || '',
+          variantsText: Array.isArray(d.event.variants)
+            ? d.event.variants.map((variant) => {
+                const options = Object.keys(variant?.details || {}).join(', ');
+                return `${variant?.name || ''}: ${options}`.trim();
+              }).join('\n')
+            : '',
         });
         const sortedSchema = [...(d.event.formSchema || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         setFormFields(sortedSchema.map((field, index) => ({
@@ -109,7 +125,7 @@ const OrganizerEventDetail = () => {
           order: Number.isFinite(field.order) ? field.order : index,
         })));
       })
-      .catch((e) => setError(e || 'Failed to load event.'))
+      .catch((e) => setError(getErrorMessage(e, 'Failed to load event.')))
       .finally(() => setLoading(false));
   };
 
@@ -122,7 +138,6 @@ const OrganizerEventDetail = () => {
       setFeedbackStats(data.stats || { total: 0, averageRating: 0, ratingBreakdown: [] });
       setFeedbackList(data.feedback || []);
     } catch (e) {
-      // keep page functional even if feedback fails
       console.error(e);
     } finally {
       setFeedbackLoading(false);
@@ -135,20 +150,115 @@ const OrganizerEventDetail = () => {
   }, [eventId, feedbackFilter]);
 
   const handleEditSave = async () => {
-    setSaving(true);
     setEditError('');
     setEditMsg('');
+
+    const parsedEndDate = new Date(editForm.endDate);
+
+    if (isDraft) {
+      const parsedStartDate = new Date(editForm.startDate);
+      const parsedRegistrationDeadline = new Date(editForm.registrationDeadline);
+
+      if (
+        Number.isNaN(parsedStartDate.getTime()) ||
+        Number.isNaN(parsedEndDate.getTime()) ||
+        Number.isNaN(parsedRegistrationDeadline.getTime())
+      ) {
+        setEditError('Please provide valid start, end, and registration deadline values.');
+        return;
+      }
+
+      if (parsedEndDate <= parsedStartDate) {
+        setEditError('End date must be after start date.');
+        return;
+      }
+
+      if (parsedRegistrationDeadline >= parsedEndDate) {
+        setEditError('Registration deadline must be before event end date.');
+        return;
+      }
+
+      if (!Array.isArray(editForm.eventTags) || editForm.eventTags.length === 0) {
+        setEditError('Select at least one event category.');
+        return;
+      }
+    }
+
+    if (isPublished && editForm.registrationDeadline) {
+      const parsedRegistrationDeadline = new Date(editForm.registrationDeadline);
+      const currentDeadline = new Date(data?.event?.registrationDeadline);
+
+      if (Number.isNaN(parsedRegistrationDeadline.getTime()) || Number.isNaN(parsedEndDate.getTime())) {
+        setEditError('Please enter a valid registration deadline.');
+        return;
+      }
+
+      if (parsedRegistrationDeadline < currentDeadline) {
+        setEditError('Cannot shorten the registration deadline for a published event.');
+        return;
+      }
+
+      if (parsedRegistrationDeadline >= parsedEndDate) {
+        setEditError('Registration deadline must be before event end date.');
+        return;
+      }
+    }
+
+    setSaving(true);
     try {
+      const payload = isDraft
+        ? {
+            title: editForm.title,
+            description: editForm.description,
+            eligibility: editForm.eligibility,
+            registrationDeadline: editForm.registrationDeadline,
+            registrationLimit: data?.event?.type === 'normal'
+              ? Number(editForm.registrationLimit)
+              : Number(editForm.stock),
+            registrationFee: Number(editForm.registrationFee),
+            startDate: editForm.startDate,
+            endDate: editForm.endDate,
+            eventTags: editForm.eventTags,
+            ...(data?.event?.type === 'normal' ? { location: editForm.location } : {}),
+            ...(data?.event?.type === 'merchandise'
+              ? {
+                  stock: Number(editForm.stock),
+                  maxPerUser: Number(editForm.maxPerUser),
+                  paymentDetails: editForm.paymentDetails,
+                  variants: editForm.variantsText
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .map((line) => {
+                      const [nameRaw, optionsRaw = ''] = line.split(':');
+                      const name = String(nameRaw || '').trim();
+                      const options = String(optionsRaw || '')
+                        .split(',')
+                        .map((option) => option.trim())
+                        .filter(Boolean);
+                      return {
+                        name,
+                        details: Object.fromEntries(options.map((option) => [option, true]))
+                      };
+                    })
+                    .filter((variant) => variant.name),
+                }
+              : {}),
+          }
+        : {
+            description: editForm.description,
+            registrationDeadline: editForm.registrationDeadline,
+            registrationLimit: Number(editForm.registrationLimit),
+          };
+
       await updateOrganizerEvent(eventId, {
-        description: editForm.description,
-        registrationDeadline: editForm.registrationDeadline,
-        registrationLimit: Number(editForm.registrationLimit),
+        ...payload,
       });
       setEditMsg('Saved successfully.');
       setEditMode(false);
       load();
     } catch (e) {
-      setEditError(e || 'Failed to save.');
+      setEditError(getErrorMessage(e, 'Failed to save.'));
     } finally {
       setSaving(false);
     }
@@ -163,7 +273,7 @@ const OrganizerEventDetail = () => {
       setStatusMsg(`Status changed to "${newStatus}".`);
       load();
     } catch (e) {
-      setStatusError(e || 'Failed to change status.');
+      setStatusError(getErrorMessage(e, 'Failed to change status.'));
     }
   };
 
@@ -205,7 +315,7 @@ const OrganizerEventDetail = () => {
       setFormMsg('Form fields saved.');
       load();
     } catch (e) {
-      setFormError(e || 'Failed to save form fields.');
+      setFormError(getErrorMessage(e, 'Failed to save form fields.'));
     } finally {
       setSavingForm(false);
     }
@@ -220,22 +330,54 @@ const OrganizerEventDetail = () => {
       setFormMsg('Draft published successfully.');
       load();
     } catch (e) {
-      setFormError(e || 'Failed to publish draft.');
+      setFormError(getErrorMessage(e, 'Failed to publish draft.'));
     } finally {
       setPublishing(false);
     }
   };
 
-  // Allowed status transitions shown as buttons
+  const handleDeleteDraft = async () => {
+    if (!window.confirm('Delete this draft event permanently?')) return;
+
+    setStatusError('');
+    setStatusMsg('');
+    try {
+      await deleteOrganizerDraftEvent(eventId);
+      navigate('/organizer/create-event');
+    } catch (e) {
+      setStatusError(getErrorMessage(e, 'Failed to delete draft.'));
+    }
+  };
+
+  const handleCloseRegistration = async () => {
+    if (!window.confirm('Close registrations for this event? Participants will still be able to view the event.')) return;
+    setStatusError('');
+    setStatusMsg('');
+    try {
+      await closeOrganizerEventRegistration(eventId);
+      setStatusMsg('Registration closed successfully.');
+      load();
+    } catch (e) {
+      setStatusError(getErrorMessage(e, 'Failed to close registration.'));
+    }
+  };
+
   const statusActions = useMemo(() => {
     if (!data) return [];
     const s = data.event.status;
     if (s === 'published') return ['closed'];
     if (s === 'ongoing') return ['completed', 'closed'];
+    if (s === 'completed') return ['closed'];
     return [];
   }, [data]);
 
-  // Filtered participants
+  const getStatusActionLabel = (nextStatus) => {
+    if (nextStatus === 'closed') {
+      return 'Close Event';
+    }
+    return `Mark as ${nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)}`;
+  };
+
   const filteredParticipants = useMemo(() => {
     if (!data) return [];
     return data.participants.filter((p) => {
@@ -265,7 +407,9 @@ const OrganizerEventDetail = () => {
   const { event, analytics, participants, displayStatus } = data;
   const isDraft = event.status === 'draft';
   const isPublished = event.status === 'published';
-  const isEditable = isDraft || isPublished;
+  const canEditFormSchema = isDraft || (isPublished && participants.length === 0);
+  const canEditPublished = isPublished && displayStatus === 'Published';
+  const isEditable = isDraft || canEditPublished;
 
   return (
     <div className="dashboard-container participant-dashboard-container">
@@ -293,6 +437,11 @@ const OrganizerEventDetail = () => {
                 {editMode ? 'Cancel' : 'Edit'}
               </button>
             )}
+            {isDraft && (
+              <button className="oed-status-btn oed-status-btn-closed" onClick={handleDeleteDraft}>
+                Delete Draft
+              </button>
+            )}
             {event.type === 'merchandise' && (
               <button
                 className="oed-edit-toggle"
@@ -302,27 +451,152 @@ const OrganizerEventDetail = () => {
                 Manage Orders
               </button>
             )}
-            {event.type === 'normal' && displayStatus === 'Ongoing' && (
+            {['normal', 'merchandise'].includes(event.type) && displayStatus === 'Ongoing' && (
               <button
                 className="oed-edit-toggle"
                 style={{ background: '#27ae60', color: 'white', borderColor: '#27ae60' }}
                 onClick={() => navigate(`/organizer/events/${eventId}/attendance`)}
               >
-                Attendance
+                {event.type === 'merchandise' ? 'Pickup Attendance' : 'Attendance'}
               </button>
             )}
           </div>
 
           {editMode ? (
             <div className="oed-edit-form">
-              <label>Description</label>
-              <textarea
-                value={editForm.description}
-                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                rows={4}
-              />
-              {isPublished && (
+              {isDraft && (
                 <>
+                  <label>Title</label>
+                  <input
+                    value={editForm.title || ''}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  />
+
+                  <label>Description</label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    rows={4}
+                  />
+
+                  <label>Eligibility</label>
+                  <select
+                    value={editForm.eligibility || 'All'}
+                    onChange={(e) => setEditForm({ ...editForm, eligibility: e.target.value })}
+                  >
+                    {ELIGIBILITY_OPTIONS.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+
+                  <label>Start Date</label>
+                  <input
+                    type="datetime-local"
+                    value={editForm.startDate || ''}
+                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  />
+
+                  <label>End Date</label>
+                  <input
+                    type="datetime-local"
+                    value={editForm.endDate || ''}
+                    onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                  />
+
+                  <label>Registration Deadline</label>
+                  <input
+                    type="datetime-local"
+                    value={editForm.registrationDeadline || ''}
+                    onChange={(e) => setEditForm({ ...editForm, registrationDeadline: e.target.value })}
+                  />
+
+                  {event.type === 'normal' && (
+                    <>
+                      <label>Registration Limit</label>
+                      <input
+                        type="number"
+                        value={editForm.registrationLimit}
+                        onChange={(e) => setEditForm({ ...editForm, registrationLimit: e.target.value })}
+                      />
+                    </>
+                  )}
+
+                  <label>Registration Fee</label>
+                  <input
+                    type="number"
+                    value={editForm.registrationFee}
+                    onChange={(e) => setEditForm({ ...editForm, registrationFee: e.target.value })}
+                  />
+
+                  {event.type === 'normal' && (
+                    <>
+                      <label>Location</label>
+                      <input
+                        value={editForm.location || ''}
+                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                      />
+                    </>
+                  )}
+
+                  {event.type === 'merchandise' && (
+                    <>
+                      <label>Stock</label>
+                      <input
+                        type="number"
+                        value={editForm.stock}
+                        onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
+                      />
+                      <label>Max Per User</label>
+                      <input
+                        type="number"
+                        value={editForm.maxPerUser}
+                        onChange={(e) => setEditForm({ ...editForm, maxPerUser: e.target.value })}
+                      />
+                      <label>Payment Details</label>
+                      <textarea
+                        value={editForm.paymentDetails || ''}
+                        onChange={(e) => setEditForm({ ...editForm, paymentDetails: e.target.value })}
+                        rows={3}
+                      />
+                      <label>Variants (one per line: Name: option1, option2)</label>
+                      <textarea
+                        value={editForm.variantsText || ''}
+                        onChange={(e) => setEditForm({ ...editForm, variantsText: e.target.value })}
+                        rows={4}
+                      />
+                    </>
+                  )}
+
+                  <label>Event Categories</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                    {EVENT_CATEGORIES.map((category) => (
+                      <label key={category} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={Array.isArray(editForm.eventTags) && editForm.eventTags.includes(category)}
+                          onChange={() => {
+                            const tags = Array.isArray(editForm.eventTags) ? editForm.eventTags : [];
+                            const nextTags = tags.includes(category)
+                              ? tags.filter((tag) => tag !== category)
+                              : [...tags, category];
+                            setEditForm({ ...editForm, eventTags: nextTags });
+                          }}
+                        />
+                        <span>{category}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {canEditPublished && (
+                <>
+                  <label>Description</label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    rows={4}
+                  />
                   <label>Registration Deadline</label>
                   <input
                     type="datetime-local"
@@ -356,6 +630,7 @@ const OrganizerEventDetail = () => {
             <div><strong>Start</strong><span>{fmt(event.startDate)}</span></div>
             <div><strong>End</strong><span>{fmt(event.endDate)}</span></div>
             <div><strong>Reg. Deadline</strong><span>{fmt(event.registrationDeadline)}</span></div>
+            <div><strong>Registration</strong><span>{event.registrationStatus === 'closed' ? 'Closed' : 'Open'}</span></div>
             <div><strong>Eligibility</strong><span>{event.eligibility || 'All'}</span></div>
             <div><strong>Fee / Price</strong><span>{event.registrationFee > 0 ? `₹${event.registrationFee}` : 'Free'}</span></div>
             {event.type === 'normal' && (
@@ -430,13 +705,21 @@ const OrganizerEventDetail = () => {
           <div className="oed-card oed-status-actions">
             <h3 className="oed-section-title">Status Actions</h3>
             <div className="oed-action-btns">
+              {event.status === 'published' && event.registrationStatus !== 'closed' && (
+                <button
+                  className="oed-status-btn oed-status-btn-closed"
+                  onClick={handleCloseRegistration}
+                >
+                  Close Registration
+                </button>
+              )}
               {statusActions.map((s) => (
                 <button
                   key={s}
                   className={`oed-status-btn oed-status-btn-${s}`}
                   onClick={() => handleStatusChange(s)}
                 >
-                  Mark as {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {getStatusActionLabel(s)}
                 </button>
               ))}
             </div>
@@ -446,11 +729,11 @@ const OrganizerEventDetail = () => {
         )}
 
         {/* ── Form Schema (editable until first registration) ── */}
-        {(isDraft || isPublished) && (
+        {canEditFormSchema && (
           <div className="oed-card">
             <h3 className="oed-section-title">Registration Form Schema</h3>
             <p className="oed-edit-note" style={{ marginTop: 0 }}>
-              Editable until first registration. After first registration, schema is locked.
+              Editable while event is in draft or published. Fields are locked after first registration.
             </p>
 
             <div className="oed-filters" style={{ marginBottom: 10 }}>
@@ -465,7 +748,6 @@ const OrganizerEventDetail = () => {
                 onChange={(e) => setNewField({ ...newField, fieldType: e.target.value })}
               >
                 <option value="text">Text</option>
-                <option value="textarea">Long Text</option>
                 <option value="number">Number</option>
                 <option value="dropdown">Dropdown</option>
                 <option value="checkbox">Checkbox</option>
@@ -622,7 +904,7 @@ const OrganizerEventDetail = () => {
 
         <EventForum eventId={eventId} />
 
-        {event.type === 'normal' && (
+        {['normal', 'merchandise'].includes(event.type) && (
           <div className="oed-card">
             <h3 className="oed-section-title">Anonymous Feedback</h3>
 

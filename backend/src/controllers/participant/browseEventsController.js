@@ -1,67 +1,113 @@
 import Event from '../../models/event/Event.js';
 import Registration from '../../models/Registration.js';
 import Participant from '../../models/user/Participant.js';
-import User from '../../models/user/User.js';
+import Organizer from '../../models/user/Organizer.js';
 
-/**
- * GET /browseEvents
- * Query params:
- *   search      - partial / organizer-name match (fuzzy handled on client)
- *   type        - event type discriminator (e.g. 'normal', 'merchandise')
- *   eligibility - eligibility string, case-insensitive
- *   startDate   - ISO date (events whose startDate >= this)
- *   endDate     - ISO date (events whose endDate <= this)
- *   filter      - 'followed' | 'all' (default: 'all')
- */
+function normalizeEligibilityValue(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'ALL') return 'All';
+  if (normalized === 'IIIT') return 'IIIT';
+  return null;
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getRuntimeEventStatus(event) {
+  const now = Date.now();
+  const startMs = new Date(event.startDate).getTime();
+  const endMs = new Date(event.endDate).getTime();
+
+  if (event.status === 'draft') return 'draft';
+  if (event.status === 'closed') return 'closed';
+  if (event.status === 'completed') return 'completed';
+  if (Number.isFinite(endMs) && now > endMs) return 'completed';
+  if (Number.isFinite(startMs) && Number.isFinite(endMs) && now >= startMs && now <= endMs) {
+    return 'ongoing';
+  }
+  return 'published';
+}
+
+
 export const browseEvents = async (req, res) => {
   try {
     const { search, type, eligibility, startDate, endDate, filter } = req.query;
     const userId = req.user._id;
+    const participant = await Participant.findById(userId)
+      .select('isIIIT followedOrganizers interests')
+      .lean();
 
-    // Base query: all events that haven't ended yet, and are at least published
+    if (!participant) {
+      return res.status(404).json({ message: 'Participant not found.' });
+    }
+
     const query = {
-      status: { $in: ['published', 'ongoing', 'closed'] },
+      status: { $in: ['published', 'ongoing', 'closed', 'completed'] },
       endDate: { $gte: new Date() },
     };
 
-    // ── Type filter ────────────────────────────────────────────────────────────
+    if (!participant.isIIIT) {
+      query.eligibility = 'All';
+    }
+
     if (type && type !== 'all') {
       query.type = type;
     }
 
-    // ── Eligibility filter ─────────────────────────────────────────────────────
     if (eligibility && eligibility !== 'all') {
-      query.eligibility = { $regex: `^${eligibility}$`, $options: 'i' };
+      const normalizedEligibility = normalizeEligibilityValue(eligibility);
+      if (!normalizedEligibility) {
+        return res.status(400).json({ message: 'Invalid eligibility filter. Use All or IIIT.' });
+      }
+
+      if (!participant.isIIIT && normalizedEligibility === 'IIIT') {
+        return res.json({ events: [], trending: [] });
+      }
+
+      query.eligibility = normalizedEligibility;
     }
 
-    // ── Date range filter ──────────────────────────────────────────────────────
     if (startDate) {
       query.startDate = { $gte: new Date(startDate) };
     }
     if (endDate) {
-      // Narrow endDate filter if already set from base query
       query.endDate = { $lte: new Date(endDate) };
     }
 
-    // ── Followed clubs filter ──────────────────────────────────────────────────
-    if (filter === 'followed') {
-      const participant = await Participant.findById(userId).select(
-        'followedOrganizers'
-      );
-      const followed = participant?.followedOrganizers ?? [];
-      if (followed.length === 0) {
-        return res.json({ events: [], trending: [] });
+    if (filter === 'followed' || filter === 'interests') {
+      if (filter === 'followed') {
+        const followed = participant?.followedOrganizers ?? [];
+        if (followed.length === 0) {
+          return res.json({ events: [], trending: [] });
+        }
+        query.organizer = { $in: followed };
       }
-      query.organizer = { $in: followed };
+
+      if (filter === 'interests') {
+        const interests = Array.isArray(participant?.interests)
+          ? participant.interests.map((interest) => String(interest).trim()).filter(Boolean)
+          : [];
+
+        if (interests.length === 0) {
+          return res.json({ events: [], trending: [] });
+        }
+
+        const interestRegexes = interests.map(
+          (interest) => new RegExp(`^${escapeRegex(interest)}$`, 'i')
+        );
+        query.eventTags = { $in: interestRegexes };
+      }
     }
 
-    // ── Search filter ──────────────────────────────────────────────────────────
-    // Partial match on title, and also include events whose organizer name matches
+    if (filter === 'open') {
+      query.status = { $in: ['published', 'ongoing'] };
+    }
+
     if (search && search.trim() !== '') {
-      const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const matchingOrganizers = await User.find({
+      const safeSearch = escapeRegex(search.trim());
+      const matchingOrganizers = await Organizer.find({
         name: { $regex: safeSearch, $options: 'i' },
-        role: 'Organizer',
       }).select('_id');
       const organizerIds = matchingOrganizers.map((o) => o._id);
 
@@ -70,17 +116,19 @@ export const browseEvents = async (req, res) => {
         ...(organizerIds.length ? [{ organizer: { $in: organizerIds } }] : []),
       ];
 
-      // Merge with any existing $or (e.g. future expansions)
       query.$or = searchClause;
     }
 
-    // ── Fetch events ───────────────────────────────────────────────────────────
     const events = await Event.find(query)
       .populate('organizer', 'name category')
-      .sort({ startDate: 1 })
+      .sort({ createdAt: -1 })
       .lean();
 
-    // ── Trending: top-5 freshest registrations (last 24 h) ────────────────────
+    const eventsWithRuntimeStatus = events.map((event) => ({
+      ...event,
+      status: getRuntimeEventStatus(event),
+    }));
+
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const trendingAgg = await Registration.aggregate([
@@ -92,21 +140,27 @@ export const browseEvents = async (req, res) => {
 
     const trendingEventIds = trendingAgg.map((t) => t._id);
 
-    const trendingDocs = await Event.find({ _id: { $in: trendingEventIds } })
+    const trendingFilter = { _id: { $in: trendingEventIds } };
+    if (!participant.isIIIT) {
+      trendingFilter.eligibility = 'All';
+    }
+
+    const trendingDocs = await Event.find(trendingFilter)
       .populate('organizer', 'name category')
       .lean();
 
-    // Re-order by trending count and attach the count
     const trendingEvents = trendingAgg
       .map((t) => {
         const doc = trendingDocs.find(
           (e) => e._id.toString() === t._id.toString()
         );
-        return doc ? { ...doc, trendingCount: t.count } : null;
+        return doc
+          ? { ...doc, status: getRuntimeEventStatus(doc), trendingCount: t.count }
+          : null;
       })
       .filter(Boolean);
 
-    return res.json({ events, trending: trendingEvents });
+    return res.json({ events: eventsWithRuntimeStatus, trending: trendingEvents });
   } catch (err) {
     console.error('[browseEvents]', err);
     return res.status(500).json({ message: 'Server error while browsing events.' });

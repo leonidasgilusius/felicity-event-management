@@ -17,7 +17,7 @@ export async function register(req, res) {
             lastName,
             contactNumber,
             isIIIT,
-            organisation
+            organisation,
         } = req.body
 
         const userExists = await User.findOne({email})
@@ -55,7 +55,7 @@ export async function register(req, res) {
 
         res.status(201).json({
             _id: participant._id,
-            firstName: participant.firstName,
+            name: participant.name,
             email: participant.email,
             role: 'Participant'
         });

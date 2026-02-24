@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import ParticipantSidebar from '../../components/ParticipantSidebar';
+import ParticipantSidebar from '../../components/Participant/ParticipantSidebar';
 import { getParticipantProfile, updateParticipantProfile, changePassword } from '../../utils/participantApi';
+import { getErrorMessage } from '../../utils/api';
 import '../../styles/Dashboard.css';
 import '../../styles/ParticipantProfile.css';
 
@@ -34,7 +35,7 @@ const ParticipantProfile = () => {
           followedOrganizers: (data.profile.followedOrganizers || []).map((o) => o._id || o),
         });
       })
-      .catch((err) => setError(err || 'Failed to load profile.'))
+      .catch((err) => setError(getErrorMessage(err, 'Failed to load profile.')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -45,7 +46,7 @@ const ParticipantProfile = () => {
       await updateParticipantProfile(form);
       setSaveMsg('Profile updated successfully.');
     } catch (err) {
-      setSaveError(err || 'Failed to save.');
+      setSaveError(getErrorMessage(err, 'Failed to save.'));
     } finally {
       setSaving(false);
     }
@@ -60,6 +61,13 @@ const ParticipantProfile = () => {
     }));
   };
 
+  const removeFollowedOrganizer = (organizerId) => {
+    setForm((prev) => ({
+      ...prev,
+      followedOrganizers: (prev.followedOrganizers || []).filter((id) => String(id) !== String(organizerId)),
+    }));
+  };
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     setPwMsg(''); setPwError('');
@@ -70,7 +78,7 @@ const ParticipantProfile = () => {
       setPwMsg(res.message);
       setPwForm({ currentPassword: '', newPassword: '', confirm: '' });
     } catch (err) {
-      setPwError(err || 'Failed to change password.');
+      setPwError(getErrorMessage(err, 'Failed to change password.'));
     } finally {
       setPwSaving(false);
     }
@@ -113,7 +121,20 @@ const ParticipantProfile = () => {
             <div className="pp-field">
               <label>Followed Clubs</label>
               <div className="pp-followed-list">
-                {profile.followedOrganizers.map((o) => <span key={o._id || o} className="pp-followed-chip">{o.name || o}</span>)}
+                {profile.followedOrganizers
+                  .filter((o) => (form.followedOrganizers || []).includes(o._id || o))
+                  .map((o) => (
+                    <span key={o._id || o} className="pp-followed-chip">
+                      {o.name || o}
+                      <button
+                        type="button"
+                        className="pp-unfollow-btn"
+                        onClick={() => removeFollowedOrganizer(o._id || o)}
+                      >
+                        Unfollow
+                      </button>
+                    </span>
+                  ))}
               </div>
             </div>
           )}

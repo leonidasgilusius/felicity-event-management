@@ -25,7 +25,9 @@ const organizerSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
-  }
+  },
+  isDisabled: { type: Boolean, default: false }, // disabled can be toggled
+  archived: { type: Boolean, default: false }, // archive is one-time
 });
 
 export default User.discriminator("Organizer", organizerSchema)

@@ -10,16 +10,29 @@ const api = axios.create({
   withCredentials: true,
 });
 
+export const getErrorMessage = (error, fallback = 'Something went wrong') => {
+  if (typeof error === 'string') return error;
+  if (error?.response?.data?.message) return error.response.data.message;
+  if (error?.response?.data?.error) return error.response.data.error;
+  if (error?.normalizedMessage) return error.normalizedMessage;
+  if (error?.message) return error.message;
+  return fallback;
+};
+
 api.interceptors.response.use(
   response => response, 
   error => {
-    const message = error.response?.data?.message || error.response?.data?.error || 'Something went wrong';
-    const status = error.response?.status;
+    const normalizedError = error ?? new Error('Request failed');
+    const message = getErrorMessage(normalizedError);
 
     // if (status === 401) window.location.href = '/login'; 
     // if (status === 403) window.location.href = '/unauthorized';
 
-    return Promise.reject(message); 
+    if (typeof normalizedError === 'object' && normalizedError !== null) {
+      normalizedError.normalizedMessage = message;
+    }
+
+    return Promise.reject(normalizedError);
   }
 );
 
@@ -64,6 +77,11 @@ export const publishOrganizerEvent = async (eventId) => {
   return response.data;
 };
 
+export const deleteOrganizerDraftEvent = async (eventId) => {
+  const response = await api.delete(`/organizerEvents/${eventId}/draft`);
+  return response.data;
+};
+
 export const getOrganizerEventDetail = async (eventId) => {
   const response = await api.get(`/organizerEvents/${eventId}`);
   return response.data;
@@ -82,6 +100,11 @@ export const updateOrganizerEvent = async (eventId, payload) => {
 
 export const changeOrganizerEventStatus = async (eventId, status) => {
   const response = await api.patch(`/organizerEvents/${eventId}/status`, { status });
+  return response.data;
+};
+
+export const closeOrganizerEventRegistration = async (eventId) => {
+  const response = await api.patch(`/organizerEvents/${eventId}/registration/close`);
   return response.data;
 };
 

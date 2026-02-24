@@ -18,16 +18,14 @@ import OrganizerEventDetail from './pages/organizer/EventDetail';
 import PaymentApprovals from './pages/organizer/PaymentApprovals';
 import AttendancePage from './pages/organizer/Attendance';
 
-// Participant Pages
 import ParticipantDashboard from './pages/participant/Dashboard';
 import BrowseEvents from './pages/participant/BrowseEvents';
 import EventDetails from './pages/participant/EventDetails';
-import ParticipationHistory from './pages/participant/History';
 import ParticipantProfile from './pages/participant/Profile';
 import Organizers from './pages/participant/Organizers';
 import OrganizerDetail from './pages/participant/OrganizerDetail';
+import OnboardingPreferences from './pages/participant/OnboardingPreferences';
 
-// Auth Pages (Shared)
 import Home from './pages/auth/Home';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
@@ -61,6 +59,14 @@ function App() {
             }
           />
           <Route
+            path="/participant/onboarding"
+            element={
+              <ProtectedRoute allowedRoles={['Participant']}>
+                <OnboardingPreferences />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/participant/events/:id"
             element={
               <ProtectedRoute allowedRoles={['Participant']}>
@@ -89,14 +95,6 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['Participant']}>
                 <BrowseEvents />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/participant/history"
-            element={
-              <ProtectedRoute allowedRoles={['Participant']}>
-                <ParticipationHistory />
               </ProtectedRoute>
             }
           />

@@ -16,7 +16,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Restore non-sensitive user profile from localStorage (token is in HttpOnly cookie)
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
@@ -24,7 +23,6 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
-  // userData = user profile returned by server (no token)
   const login = (userData) => {
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);

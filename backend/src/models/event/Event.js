@@ -19,7 +19,12 @@ const EventSchema = new mongoose.Schema({
     enum: ['draft', 'published', 'ongoing', 'closed', 'completed'],
     default: 'draft'
   },
-  eligibility: { type: String, default: 'All', required: true  },
+  registrationStatus: {
+    type: String,
+    enum: ['open', 'closed'],
+    default: 'open'
+  },
+  eligibility: { type: String, default: 'All', required: true, enum: ['All', 'IIIT']  },
   registrationDeadline: { type: Date, required: true  },
   registrationLimit: { type: Number,  required: true  }, 
   registrationFee: { type: Number, required: true },
@@ -28,23 +33,15 @@ const EventSchema = new mongoose.Schema({
   eventTags: [{ type: String, required: true }],
 
   currentRegistrations: { type: Number, default: 0 },
-  image: { type: String }
+  image: { type: String },
+
+  formSchema: [{
+    label: String,
+    fieldType: { type: String, enum: ['text', 'number', 'file', 'checkbox', 'dropdown'] },
+    options: [String],
+    required: { type: Boolean, default: false },
+    order: { type: Number, default: 0 }
+  }]
 }, baseOptions);
 
 export default mongoose.model('Event', EventSchema);
-
-// --- 2. Discriminators ---
-
-
-
-// C. Hackathon (Future Extension - Tier A Feature) [cite: 169-173]
-// You can uncomment this later when implementing Tier A
-/*
-const HackathonEvent = Event.discriminator('hackathon', new mongoose.Schema({
-  startDate: Date,
-  endDate: Date,
-  minTeamSize: Number,
-  maxTeamSize: Number,
-  problemStatement: String
-}));
-*/

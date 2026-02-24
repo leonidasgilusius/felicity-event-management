@@ -29,7 +29,6 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT
 
-// Must specify exact origin (not '*') when credentials: true
 app.use(cors({
     origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
     credentials: true
@@ -44,7 +43,6 @@ app.use('/register', registerRoutes)
 app.use('/login', loginRoutes)
 app.use('/admin-login', adminLoginRoutes)
 
-// Clear the auth cookie on logout
 app.post('/logout', (req, res) => {
     res.clearCookie('token', {
         httpOnly: true,

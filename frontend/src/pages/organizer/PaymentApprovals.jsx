@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
-import { getEventOrders, approveOrder, rejectOrder, getOrderProof } from '../../utils/api';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
+import { getEventOrders, approveOrder, rejectOrder, getOrderProof, getErrorMessage } from '../../utils/api';
 import '../../styles/Dashboard.css';
 
 const STATUS_LABELS = {
@@ -29,9 +29,9 @@ export default function PaymentApprovals() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [filter, setFilter]     = useState('all');
-  const [preview, setPreview]   = useState(null);   // { orderId } — proof fetched on demand
-  const [proofCache, setProofCache] = useState({});  // orderId -> url | 'loading' | 'error'
-  const [working, setWorking]   = useState(null);   // orderId being approved/rejected
+  const [preview, setPreview]   = useState(null);   
+  const [proofCache, setProofCache] = useState({}); 
+  const [working, setWorking]   = useState(null);  
 
   useEffect(() => {
     (async () => {
@@ -40,7 +40,7 @@ export default function PaymentApprovals() {
         setOrders(data.orders);
         setEvent(data.event || { title: data.eventTitle });
       } catch (e) {
-        setError(e?.response?.data?.message || 'Failed to load orders.');
+        setError(getErrorMessage(e, 'Failed to load orders.'));
       } finally {
         setLoading(false);
       }
@@ -49,7 +49,7 @@ export default function PaymentApprovals() {
 
   const handleViewProof = async (orderId) => {
     setPreview({ orderId });
-    if (proofCache[orderId]) return;  // already cached
+    if (proofCache[orderId]) return;  
     setProofCache((prev) => ({ ...prev, [orderId]: 'loading' }));
     try {
       const data = await getOrderProof(orderId);
@@ -67,7 +67,7 @@ export default function PaymentApprovals() {
         prev.map((o) => o._id === orderId ? { ...o, paymentStatus: 'approved', status: 'confirmed', message: res.message } : o)
       );
     } catch (e) {
-      alert(e?.response?.data?.message || 'Failed to approve.');
+      alert(getErrorMessage(e, 'Failed to approve.'));
     } finally {
       setWorking(null);
     }
@@ -81,7 +81,7 @@ export default function PaymentApprovals() {
         prev.map((o) => o._id === orderId ? { ...o, paymentStatus: 'rejected', status: 'pending' } : o)
       );
     } catch (e) {
-      alert(e?.response?.data?.message || 'Failed to reject.');
+      alert(getErrorMessage(e, 'Failed to reject.'));
     } finally {
       setWorking(null);
     }

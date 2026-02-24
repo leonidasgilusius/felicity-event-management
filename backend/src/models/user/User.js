@@ -14,9 +14,7 @@ const userSchema = new mongoose.Schema({
         lowercase: true,
         trim: true,
         match: [/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, 'Please enter a valid email address']
-    },
-    isDisabled: { type: Boolean, default: false },
-    archived: { type: Boolean, default: false },
+    }, 
     password: { type: String, required: true },
 }, {
     discriminatorKey: 'role',

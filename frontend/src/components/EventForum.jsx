@@ -6,6 +6,7 @@ import {
   toggleForumReaction,
   toggleForumPin,
   deleteForumMessage,
+  getErrorMessage,
 } from '../utils/api';
 
 const EMOJIS = ['👍', '❤️', '👏', '😂', '❓'];
@@ -171,7 +172,7 @@ export default function EventForum({ eventId }) {
       setMessages(next);
       if (!silent) setNewCount(0);
     } catch (e) {
-      if (!silent) setError(e || 'Failed to load forum messages.');
+      if (!silent) setError(getErrorMessage(e, 'Failed to load forum messages.'));
       else setRefreshError('Live refresh failed.');
     } finally {
       if (!silent) setLoading(false);
@@ -199,7 +200,7 @@ export default function EventForum({ eventId }) {
       setAnnouncement(false);
       await loadMessages();
     } catch (e) {
-      setError(e || 'Failed to post message.');
+      setError(getErrorMessage(e, 'Failed to post message.'));
     } finally {
       setPosting(false);
     }
@@ -233,7 +234,7 @@ export default function EventForum({ eventId }) {
       });
       await loadMessages();
     } catch (e) {
-      setError(e || 'Failed to post reply.');
+      setError(getErrorMessage(e, 'Failed to post reply.'));
     } finally {
       setBusyReply(null);
     }
@@ -244,7 +245,7 @@ export default function EventForum({ eventId }) {
       await toggleForumReaction(messageId, emoji);
       await loadMessages(true);
     } catch (e) {
-      setError(e || 'Failed to react to message.');
+      setError(getErrorMessage(e, 'Failed to react to message.'));
     }
   };
 
@@ -253,7 +254,7 @@ export default function EventForum({ eventId }) {
       await toggleForumPin(messageId, isPinned);
       await loadMessages();
     } catch (e) {
-      setError(e || 'Failed to update pin state.');
+      setError(getErrorMessage(e, 'Failed to update pin state.'));
     }
   };
 
@@ -262,7 +263,7 @@ export default function EventForum({ eventId }) {
       await deleteForumMessage(messageId);
       await loadMessages();
     } catch (e) {
-      setError(e || 'Failed to delete message.');
+      setError(getErrorMessage(e, 'Failed to delete message.'));
     }
   };
 
@@ -276,9 +277,6 @@ export default function EventForum({ eventId }) {
         </div>
       </div>
 
-      <p style={{ marginTop: 8, color: '#666', fontSize: 13 }}>
-        Real-time updates refresh automatically every few seconds.
-      </p>
 
       <div style={{ marginTop: 10 }}>
         <textarea

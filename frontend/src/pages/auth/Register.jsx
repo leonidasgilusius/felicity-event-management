@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { registerUser } from '../../utils/api';
+import { registerUser, getErrorMessage } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import ReCAPTCHA from 'react-google-recaptcha';
 import '../../styles/Auth.css';
@@ -20,6 +20,8 @@ const Register = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaRenderKey, setCaptchaRenderKey] = useState(0);
+  const captchaRef = useRef(null);
 
   const captchaSiteKey = import.meta.env.VITE_CAPTCHA_SITE_KEY || '';
 
@@ -47,14 +49,17 @@ const Register = () => {
       login(
         {
           _id: response._id,
-          firstName: response.firstName,
+          name: response.name,
           email: response.email,
           role: response.role
         }
       );
-      navigate('/participant-dashboard');
+      navigate('/participant/onboarding', { state: { fromRegistration: true } });
     } catch (err) {
-      setError(err || 'Registration failed. Please try again.');
+      setError(getErrorMessage(err, 'Registration failed. Please try again.'));
+      setCaptchaToken('');
+      captchaRef.current?.reset();
+      setCaptchaRenderKey(prev => prev + 1);
     } finally {
       setLoading(false);
     }
@@ -133,7 +138,7 @@ const Register = () => {
                 checked={formData.isIIIT}
                 onChange={handleChange}
               />
-              I am an IIIT Hyderabad student
+              I am a IIIT Hyderabad student
             </label>
           </div>
 
@@ -153,8 +158,11 @@ const Register = () => {
           {captchaSiteKey && (
             <div style={{ marginBottom: 12 }}>
               <ReCAPTCHA
+                key={captchaRenderKey}
+                ref={captchaRef}
                 sitekey={captchaSiteKey}
                 onChange={(token) => setCaptchaToken(token || '')}
+                onExpired={() => setCaptchaToken('')}
               />
             </div>
           )}

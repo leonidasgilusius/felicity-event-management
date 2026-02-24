@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import ParticipantSidebar from '../../components/ParticipantSidebar';
+import ParticipantSidebar from '../../components/Participant/ParticipantSidebar';
 import {
   getEventDetail, registerForEvent, orderMerchandise,
   unregisterFromEvent, uploadPaymentProof, submitEventFeedback,
 } from '../../utils/participantApi';
+import { getErrorMessage } from '../../utils/api';
 import EventForum from '../../components/EventForum';
 import '../../styles/Dashboard.css';
 import '../../styles/EventDetails.css';
@@ -37,7 +38,7 @@ const EventDetails = () => {
   const [uploadMsg, setUploadMsg] = useState('');
   const [uploadError, setUploadError] = useState('');
 
-  // Anonymous feedback (attended normal events only)
+  // Anonymous feedback (eligible after attended/collected state)
   const [feedbackMeta, setFeedbackMeta] = useState({ canSubmit: false, hasSubmitted: false, existing: null });
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState('');
@@ -53,7 +54,7 @@ const EventDetails = () => {
         if (data.existingTicket) setTicket(data.existingTicket);
         if (data.feedback) setFeedbackMeta(data.feedback);
       })
-      .catch((err) => setError(err || 'Failed to load event.'))
+      .catch((err) => setError(getErrorMessage(err, 'Failed to load event.')))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -65,7 +66,7 @@ const EventDetails = () => {
     if (!event) return null;
     if (alreadyRegistered) return 'already';
     if (['closed', 'completed', 'draft'].includes(event.status)) return 'closed';
-    if (new Date(event.registrationDeadline) < new Date()) return 'deadline';
+    if (event.registrationStatus === 'closed') return 'registrationClosed';
     if (event.type === 'merchandise' && event.stock <= 0) return 'stock';
     if (event.type === 'normal' && event.currentRegistrations >= event.registrationLimit) return 'limit';
     return null;
@@ -76,7 +77,7 @@ const EventDetails = () => {
   const blockMessages = {
     already: 'You are already registered for this event.',
     closed: 'Registrations are closed for this event.',
-    deadline: 'The registration deadline has passed.',
+    registrationClosed: 'Registrations are closed for this event.',
     stock: 'This item is out of stock.',
     limit: 'The registration limit has been reached.',
   };
@@ -104,7 +105,7 @@ const EventDetails = () => {
       setTicket(result);
       setAlreadyRegistered(true);
     } catch (err) {
-      setSubmitError(err || 'Registration failed.');
+      setSubmitError(getErrorMessage(err, 'Registration failed.'));
     } finally {
       setSubmitting(false);
     }
@@ -119,7 +120,7 @@ const EventDetails = () => {
       setAlreadyRegistered(false);
       setTicket(null);
     } catch (err) {
-      setUnregisterError(err || 'Failed to unregister.');
+      setUnregisterError(getErrorMessage(err, 'Failed to unregister.'));
     } finally {
       setUnregistering(false);
     }
@@ -155,7 +156,7 @@ const EventDetails = () => {
       setProofLink('');
       setTicket((prev) => ({ ...prev, hasProof: true, paymentStatus: 'pending_approval' }));
     } catch (err) {
-      setUploadError(err || 'Upload failed.');
+      setUploadError(getErrorMessage(err, 'Upload failed.'));
     } finally {
       setUploading(false);
     }
@@ -185,7 +186,7 @@ const EventDetails = () => {
         },
       });
     } catch (err) {
-      setFeedbackError(err || 'Failed to submit feedback.');
+      setFeedbackError(getErrorMessage(err, 'Failed to submit feedback.'));
     } finally {
       setFeedbackSubmitting(false);
     }
@@ -244,11 +245,9 @@ const EventDetails = () => {
           )}
         </div>
 
-        {/* ── Action section ─── */}
         <div className="ed-card">
           {ticket ? (
             <div className="ed-ticket">
-              {/* ── Merchandise: payment workflow ── */}
               {event.type === 'merchandise' ? (
                 <>
                   <div className="ed-ticket-details">
@@ -266,7 +265,7 @@ const EventDetails = () => {
                     </>
                   ) : ticket.paymentStatus === 'rejected' ? (
                     <>
-                      <p className="ed-blocked" style={{ color: '#c0392b' }}>
+                      <p className="ed-blocked ed-danger-text">
                         ✗ Your payment proof was rejected. Please re-upload a valid proof.
                       </p>
                       <div className="ed-proof-upload">
@@ -277,7 +276,7 @@ const EventDetails = () => {
                           onChange={(e) => { setProofFile(e.target.files[0]); setUploadMsg(''); setUploadError(''); }}
                           className="ed-proof-input"
                         />
-                        <p style={{ fontSize: 12, color: '#888', margin: '4px 0' }}>or paste a share link (Google Drive/Dropbox/Cloudinary)</p>
+                        <p className="ed-hint">or paste a share link (Google Drive/Dropbox/Cloudinary)</p>
                         <input
                           type="url"
                           value={proofLink}
@@ -297,11 +296,10 @@ const EventDetails = () => {
                       </div>
                     </>
                   ) : (
-                    /* pending_approval */
                     ticket.hasProof ? (
                       <>
                         <p className="ed-pending-badge">⏳ Awaiting organizer approval</p>
-                        <p style={{ fontSize: 13, color: '#666' }}>
+                        <p className="ed-muted-text">
                           Your payment proof has been submitted. You will receive a QR code by email once approved.
                         </p>
                       </>
@@ -310,7 +308,7 @@ const EventDetails = () => {
                         <p className="ed-success">{ticket.message}</p>
                         <div className="ed-proof-upload">
                           <label className="ed-proof-label">Upload Payment Proof <span className="ed-required">*</span></label>
-                          <p style={{ fontSize: 12, color: '#888', margin: '0 0 8px' }}>
+                          <p className="ed-hint ed-hint-top">
                             Upload a screenshot/photo up to 2MB or paste a share link.
                           </p>
                           <input
@@ -319,7 +317,7 @@ const EventDetails = () => {
                             onChange={(e) => { setProofFile(e.target.files[0]); setUploadMsg(''); setUploadError(''); }}
                             className="ed-proof-input"
                           />
-                          <p style={{ fontSize: 12, color: '#888', margin: '4px 0' }}>
+                          <p className="ed-hint">
                             Link instructions: set Drive access to “Anyone with the link can view”, then paste below.
                           </p>
                           <input
@@ -332,10 +330,9 @@ const EventDetails = () => {
                           {uploadError && <p className="error-message">{uploadError}</p>}
                           {uploadMsg && <p className="ed-success">{uploadMsg}</p>}
                           <button
-                            className="ed-submit-btn"
+                            className="ed-submit-btn ed-submit-btn-spaced"
                             onClick={handleUploadProof}
                             disabled={(!proofFile && !proofLink.trim()) || uploading}
-                            style={{ marginTop: 10 }}
                           >
                             {uploading ? 'Uploading…' : 'Submit Payment Proof'}
                           </button>
@@ -345,7 +342,6 @@ const EventDetails = () => {
                   )}
                 </>
               ) : (
-                /* ── Normal event ticket ── */
                 <>
                   <p className="ed-success">{ticket.message}</p>
                   <div className="ed-ticket-details">
@@ -377,17 +373,10 @@ const EventDetails = () => {
             <form onSubmit={handleSubmit} className="ed-form">
               <h3>{event.type === 'merchandise' ? 'Purchase' : 'Register'}</h3>
 
-              {/* Normal event: dynamic form */}
               {event.type === 'normal' && (event.formSchema || []).map((field) => (
                 <div key={field.label} className="ed-field">
                   <label>{field.label}{field.required && <span className="ed-required">*</span>}</label>
-                  {field.fieldType === 'textarea' ? (
-                    <textarea
-                      required={field.required}
-                      value={formResponses[field.label] || ''}
-                      onChange={(e) => setFormResponses({ ...formResponses, [field.label]: e.target.value })}
-                    />
-                  ) : field.fieldType === 'dropdown' ? (
+                  {field.fieldType === 'dropdown' ? (
                     <select
                       required={field.required}
                       value={formResponses[field.label] || ''}
@@ -396,6 +385,20 @@ const EventDetails = () => {
                       <option value="">Select…</option>
                       {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
+                  ) : field.fieldType === 'checkbox' ? (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formResponses[field.label])}
+                      onChange={(e) => setFormResponses({ ...formResponses, [field.label]: e.target.checked })}
+                    />
+                  ) : field.fieldType === 'file' ? (
+                    <input
+                      type="url"
+                      required={field.required}
+                      placeholder="https://drive.google.com/..."
+                      value={formResponses[field.label] || ''}
+                      onChange={(e) => setFormResponses({ ...formResponses, [field.label]: e.target.value })}
+                    />
                   ) : (
                     <input
                       type={field.fieldType === 'number' ? 'number' : 'text'}
@@ -407,7 +410,6 @@ const EventDetails = () => {
                 </div>
               ))}
 
-              {/* Merchandise: variants + quantity */}
               {event.type === 'merchandise' && (
                 <>
                   {(event.variants || []).map((v) => (
@@ -436,17 +438,10 @@ const EventDetails = () => {
                   </div>
                   <p className="ed-total">Total: ₹{event.registrationFee * quantity}</p>
 
-                  {/* Extra form fields defined by organizer */}
                   {(event.formSchema || []).map((field) => (
                     <div key={field.label} className="ed-field">
                       <label>{field.label}{field.required && <span className="ed-required">*</span>}</label>
-                      {field.fieldType === 'textarea' ? (
-                        <textarea
-                          required={field.required}
-                          value={formResponses[field.label] || ''}
-                          onChange={(e) => setFormResponses({ ...formResponses, [field.label]: e.target.value })}
-                        />
-                      ) : field.fieldType === 'dropdown' ? (
+                      {field.fieldType === 'dropdown' ? (
                         <select
                           required={field.required}
                           value={formResponses[field.label] || ''}
@@ -455,6 +450,20 @@ const EventDetails = () => {
                           <option value="">Select…</option>
                           {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
+                      ) : field.fieldType === 'checkbox' ? (
+                        <input
+                          type="checkbox"
+                          checked={Boolean(formResponses[field.label])}
+                          onChange={(e) => setFormResponses({ ...formResponses, [field.label]: e.target.checked })}
+                        />
+                      ) : field.fieldType === 'file' ? (
+                        <input
+                          type="url"
+                          required={field.required}
+                          placeholder="https://drive.google.com/..."
+                          value={formResponses[field.label] || ''}
+                          onChange={(e) => setFormResponses({ ...formResponses, [field.label]: e.target.value })}
+                        />
                       ) : (
                         <input
                           type={field.fieldType === 'number' ? 'number' : 'text'}
@@ -466,12 +475,12 @@ const EventDetails = () => {
                     </div>
                   ))}
                   {event.paymentDetails && (
-                    <div style={{ background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 8 }}>
+                    <div className="ed-feedback-existing">
                       <strong>Payment details:</strong>
-                      <pre style={{ margin: '4px 0 0', fontFamily: 'inherit', whiteSpace: 'pre-wrap' }}>{event.paymentDetails}</pre>
+                      <pre className="ed-hint ed-payment-pre">{event.paymentDetails}</pre>
                     </div>
                   )}
-                  <p style={{ fontSize: 12, color: '#888', margin: '-4px 0 8px' }}>
+                  <p className="ed-hint-compact">
                     You will be asked to upload a screenshot of your payment after placing the order.
                   </p>
                 </>
@@ -485,62 +494,62 @@ const EventDetails = () => {
           )}
         </div>
 
-        <EventForum eventId={id} />
+        {alreadyRegistered ? (
+          <EventForum eventId={id} />
+        ) : (
+          <div className="ed-card">
+            <h3>Discussion Forum</h3>
+            <p className="ed-blocked">Register for this event to access chat.</p>
+          </div>
+        )}
 
-        {event.type === 'normal' && (
-          <div className="ed-card" style={{ marginTop: 20 }}>
-            <h3 style={{ marginTop: 0 }}>Anonymous Feedback</h3>
-            <p style={{ color: '#666', fontSize: 13, marginTop: 4 }}>
-              Feedback opens after your attendance is marked via QR scan. Organizer sees aggregated anonymous ratings/comments.
-            </p>
+        {['normal', 'merchandise'].includes(event.type) && (
+          <div className="ed-card ed-feedback-card">
+            <h3 className="ed-feedback-title">Anonymous Feedback</h3>
 
             {feedbackMeta.hasSubmitted && feedbackMeta.existing ? (
-              <div style={{ background: '#f7f8fb', border: '1px solid #e6eaf2', borderRadius: 8, padding: 12 }}>
-                <p style={{ margin: 0, fontWeight: 600 }}>You already submitted feedback.</p>
-                <p style={{ margin: '6px 0 0' }}>Rating: {'★'.repeat(feedbackMeta.existing.rating)}{'☆'.repeat(5 - feedbackMeta.existing.rating)}</p>
-                {feedbackMeta.existing.comment && <p style={{ margin: '6px 0 0' }}>{feedbackMeta.existing.comment}</p>}
+              <div className="ed-feedback-existing">
+                <p><strong>You already submitted feedback.</strong></p>
+                <p>Rating: {'★'.repeat(feedbackMeta.existing.rating)}{'☆'.repeat(5 - feedbackMeta.existing.rating)}</p>
+                {feedbackMeta.existing.comment && <p>{feedbackMeta.existing.comment}</p>}
               </div>
             ) : feedbackMeta.canSubmit ? (
               <form onSubmit={handleSubmitFeedback}>
-                <label style={{ display: 'block', marginBottom: 6 }}>Rating</label>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <label className="ed-feedback-label">Rating</label>
+                <div className="ed-rating-row">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       type="button"
                       onClick={() => setFeedbackRating(star)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        fontSize: 24,
-                        cursor: 'pointer',
-                        color: star <= feedbackRating ? '#f39c12' : '#bbb',
-                      }}
+                      className={`ed-star-btn ${star <= feedbackRating ? 'active' : 'inactive'}`}
                     >
                       ★
                     </button>
                   ))}
                 </div>
 
-                <label style={{ display: 'block', marginBottom: 6 }}>Comment (optional)</label>
+                <label className="ed-feedback-label">Comment (optional)</label>
                 <textarea
                   rows={3}
                   value={feedbackComment}
                   onChange={(e) => setFeedbackComment(e.target.value)}
                   placeholder="Share your experience (anonymous)..."
-                  style={{ width: '100%' }}
+                  className="ed-full-width"
                 />
 
-                {feedbackError && <p className="error-message" style={{ marginTop: 8 }}>{feedbackError}</p>}
-                {feedbackMsg && <p style={{ color: '#27ae60', fontWeight: 600, marginTop: 8 }}>{feedbackMsg}</p>}
+                {feedbackError && <p className="error-message ed-msg-top">{feedbackError}</p>}
+                {feedbackMsg && <p className="ed-feedback-msg">{feedbackMsg}</p>}
 
-                <button type="submit" className="ed-submit-btn" disabled={feedbackSubmitting} style={{ marginTop: 10 }}>
+                <button type="submit" className="ed-submit-btn ed-submit-btn-spaced" disabled={feedbackSubmitting}>
                   {feedbackSubmitting ? 'Submitting…' : 'Submit Anonymous Feedback'}
                 </button>
               </form>
             ) : (
-              <p style={{ color: '#777', marginBottom: 0 }}>
-                You can submit feedback once attendance is marked as present.
+              <p className="ed-feedback-empty">
+                {event.type === 'merchandise'
+                  ? 'You can submit feedback once your approved order is marked as collected.'
+                  : 'You can submit feedback once attendance is marked as present.'}
               </p>
             )}
           </div>

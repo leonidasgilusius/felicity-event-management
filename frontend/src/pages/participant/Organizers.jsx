@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ParticipantSidebar from '../../components/ParticipantSidebar';
+import ParticipantSidebar from '../../components/Participant/ParticipantSidebar';
 import { listOrganizers, toggleFollowOrganizer } from '../../utils/participantApi';
+import { getErrorMessage } from '../../utils/api';
 import '../../styles/Dashboard.css';
 import '../../styles/Organizers.css';
 
@@ -14,7 +15,7 @@ const Organizers = () => {
   useEffect(() => {
     listOrganizers()
       .then((data) => setOrganizers(data.organizers))
-      .catch((err) => setError(err || 'Failed to load organizers.'))
+      .catch((err) => setError(getErrorMessage(err, 'Failed to load organizers.')))
       .finally(() => setLoading(false));
   }, []);
 

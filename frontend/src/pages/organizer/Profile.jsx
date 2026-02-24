@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import OrganizerSidebar from '../../components/OrganizerSidebar';
+import OrganizerSidebar from '../../components/Organizer/OrganizerSidebar';
 import {
     getOrganizerProfile,
     updateOrganizerProfile,
     createOrganizerPasswordResetRequest,
     listOrganizerPasswordResetRequests,
+    getErrorMessage,
 } from '../../utils/api';
 import '../../styles/Dashboard.css';
 
@@ -46,7 +47,7 @@ const OrganizerProfile = () => {
                     discordWebhook: data.profile.discordWebhook || '',
                 });
             })
-            .catch((e) => setError(e || 'Failed to load profile.'))
+            .catch((e) => setError(getErrorMessage(e, 'Failed to load profile.')))
             .finally(() => setLoading(false));
 
             loadResetRequests();
@@ -64,7 +65,7 @@ const OrganizerProfile = () => {
             setProfile(data.profile);
             setMsg('Profile updated successfully.');
         } catch (err) {
-            setError(err || 'Failed to update profile.');
+            setError(getErrorMessage(err, 'Failed to update profile.'));
         } finally {
             setSaving(false);
         }
@@ -87,7 +88,7 @@ const OrganizerProfile = () => {
             setResetMsg('Password reset request submitted to admin.');
             await loadResetRequests();
         } catch (err) {
-            setResetError(err || 'Failed to submit password reset request.');
+            setResetError(getErrorMessage(err, 'Failed to submit password reset request.'));
         } finally {
             setSubmittingReset(false);
         }

@@ -16,8 +16,14 @@ const participantSchema = new mongoose.Schema({
     organisation: {
         type: String
     },
-    interests: [{ type: String }],
-    followedOrganizers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Organizer' }]
+    interests: {
+        type: [{ type: String, trim: true }],
+        default: []
+    },
+    followedOrganizers: {
+        type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Organizer' }],
+        default: []
+    }
 })
 
 export default User.discriminator("Participant", participantSchema)
